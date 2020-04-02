@@ -1,0 +1,5 @@
+*CMakeList.text.user*
+logs/*
+build/*
+devel/*
+.catkin_tools
