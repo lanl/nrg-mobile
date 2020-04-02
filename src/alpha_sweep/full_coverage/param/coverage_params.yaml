@@ -1,0 +1,35 @@
+# Robot Configuration Parameters - Pioneer
+Robot:
+  width: 0.5 # width of robot (m)
+  length: 0.697 # Length of robot (m) <-- should be the direction pointing to front/back of robot
+
+Sensor:
+  width: 0.63
+  length: 0.127
+  x: 0.0 # in direction of robot width
+  y: 0.33 # in direction of robot length
+
+Grid:
+  sweep_width: 0.39 # how wide do you want coverage cells (squares) to be. if using costmap, numbers will be prettier if you set costmap resolution to play nice with these.
+  cell_dim: 3 # number of coarse cells along width or height of coverage cell
+  occupancy_threshold: 100 # threshold probability of a cell being considered occupied. If using cost map, set to 100.
+  num_border_cells: 3 # Depth of grid cells along wall that we do not want to plan to cover (3 * (0.39/3) = 0.39.
+                      # You should also set the costmap inflation radius to be slightly less than numBC*(sweep_with/cell_dim) + (robot_width/2.0)
+
+GridConverter:
+  map_topic: /map
+  costmap_topic: /move_base/global_costmap/costmap
+
+GUI:
+  map_topic: /map
+  is_costmap: False
+
+cover_map:
+  command_timeout: 2.0
+  max_lin_vel: 0.5
+  max_rot_vel: 0.7
+  map_topic: /move_base/global_costmap/costmap
+  is_costmap: True
+
+
+  

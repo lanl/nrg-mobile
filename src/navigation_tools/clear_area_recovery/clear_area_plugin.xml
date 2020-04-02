@@ -1,0 +1,7 @@
+<library path="lib/libclear_area_recovery">
+  <class name="clear_area_recovery/ClearAreaRecovery" type="clear_area_recovery::ClearAreaRecovery" base_class_type="nav_core::RecoveryBehavior">
+    <description>
+      A recovery behavior that clears the area that the robot encompases to attempt to clear out space.
+    </description>
+  </class>
+</library>

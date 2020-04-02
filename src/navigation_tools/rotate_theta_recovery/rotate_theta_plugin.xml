@@ -1,0 +1,7 @@
+<library path="lib/librotate_theta_recovery">
+  <class name="rotate_theta_recovery/RotateThetaRecovery" type="rotate_theta_recovery::RotateThetaRecovery" base_class_type="nav_core::RecoveryBehavior">
+    <description>
+      A recovery behavior that performs a theta radian in-place rotation to attempt to clear out space.
+    </description>
+  </class>
+</library>

@@ -1,0 +1,17 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/remove.png</file>
+        <file>images/cursor-png-1103.png</file>
+        <file>images/cursor-png-1115.png</file>
+        <file>images/add.png</file>
+        <file>images/fromClick.png</file>
+        <file>images/fromRobot.png</file>
+        <file>images/icon.png</file>
+        <file>images/pencil.png</file>
+        <file>images/eraser.png</file>
+        <file>images/line.png</file>
+        <file>images/back.png</file>
+        <file>images/forward.png</file>
+        <file>images/splash.png</file>
+    </qresource>
+</RCC>

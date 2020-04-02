@@ -1,0 +1,39 @@
+<launch>
+  <!-- ************** Configuration Parameters ************************* -->
+  <rosparam file="$(find full_coverage)/param/coverage_params.yaml" command="load" />
+
+  <!-- ************** Cover algorithm nodes **************************** -->
+  <!--node
+    name = "sweep_gui"
+    pkg = "sweep_gui"
+    type = "sweep_gui"
+    output = "screen" /-->
+
+  <node
+    name = "coarse_grid_converter"
+    pkg  = "full_coverage"
+    type = "coarse_grid_converter"
+    output = "screen" />
+
+  <node
+    name = "wall_planner_node"
+    pkg = "full_coverage"
+    type = "wall_planner_node"
+    output = "screen" 
+  />
+
+  <node
+    name = "cover_map"
+    pkg = "full_coverage"
+    type = "cover_map"
+    output = "screen"
+  />
+
+  <node
+    name = "safe_drive_pub"
+    pkg = "full_coverage"
+    type = "safe_drive_pub"
+    output = "screen"
+    respawn = "true"
+  />
+</launch>

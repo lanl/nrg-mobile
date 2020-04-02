@@ -1,0 +1,28 @@
+<launch>  
+  <!-- ************** Cover algorithm nodes **************************** -->
+  <node
+    name = "sweep_gui"
+    pkg = "sweep_gui"
+    type = "sweep_gui"
+    launch-prefix="xterm -e gdb --args"
+    output = "screen" />
+
+  <!--node
+    name = "coarse_grid_converter"
+    pkg  = "full_coverage"
+    type = "coarse_grid_converter"
+    output = "screen" >
+  </node--> 
+
+  <!--node
+    name = "wall_planner_node"
+    pkg = "full_coverage"
+    type = "wall_planner_node"
+    output = "screen" / -->
+  
+  <!--node
+    name = "cover_map"
+    pkg = "full_coverage"
+    type = "cover_map"
+    output = "screen" /-->
+</launch>

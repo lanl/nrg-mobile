@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format2.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="2">
+    <name>clear_area_recovery</name>
+    <version>1.15.2</version>
+    <description>
+
+        This package provides a recovery behavior for the navigation stack that attempts to clear space by clearing the area that the robot encompasses.Copied from rotate_theta_recovery. left original author tag.
+
+    </description>
+    <author>Eitan Marder-Eppstein</author>
+    <author>contradict@gmail.com</author>
+    <maintainer email="avonsternberg@lanl.gov">Aaron Hoy</maintainer>
+    <license>BSD</license>
+    <url>http://wiki.ros.org/rotate_recovery</url>
+
+    <buildtool_depend>catkin</buildtool_depend>
+
+    <build_depend>base_local_planner</build_depend>
+    <build_depend>cmake_modules</build_depend>
+    <build_depend>rolling_map</build_depend>
+
+    <depend>costmap_2d</depend>
+    <depend>eigen</depend>
+    <depend>nav_core</depend>
+    <depend>pluginlib</depend>
+    <depend>roscpp</depend>
+    <depend>tf</depend>
+
+    <export>
+        <nav_core plugin="${prefix}/clear_area_plugin.xml" />
+    </export>
+
+</package>

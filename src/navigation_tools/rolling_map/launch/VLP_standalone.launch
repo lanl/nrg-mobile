@@ -1,0 +1,14 @@
+<!-- -*- mode: XML -*- -->
+<!-- run velodyne_pointcloud/CloudNodelet in a nodelet manager for a VLP-16 -->
+
+<launch>
+  
+  <!-- launch velodyne nodes -->
+  <include
+    file="$(find velodyne_pointcloud)/launch/VLP16_points.launch" >
+  </include>
+
+  <!-- publish map frame -->
+  <node pkg="tf" type="static_transform_publisher" name="map_publisher" args="0 0 0.2 0 0 0 1 map velodyne 100" /> 
+
+</launch>

@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="markers_to_map" type="markers_to_map_node" name="markers_to_map_node" output="screen" respawn="true">
+    <rosparam file="$(find markers_to_map)/param/config.yaml" command="load" />
+  </node>
+</launch>

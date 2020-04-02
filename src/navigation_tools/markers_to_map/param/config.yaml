@@ -1,0 +1,9 @@
+marker_topic: /octomap_wrapper/octomap_occupied
+map_topic: /projected_map
+pose_topic: /robot_pose
+map_frame: map
+robot_frame: base_link
+map_resolution: 0.043
+map_width: 4.0
+map_height: 4.0
+rate: 1.0

@@ -13,8 +13,7 @@ Department of Energy/National Nuclear Security Administration. All rights in the
 reserved by Triad National Security, LLC, and the U.S. Department of Energy/National Nuclear
 Security Administration. The Government is granted for itself and others acting on its behalf a
 nonexclusive, paid-up, irrevocable worldwide license in this material to reproduce, prepare
-derivative works, distribute copies to the public, perform publicly and display publicly, and to permit
-others to do so.
+derivative works, distribute copies to the public, perform publicly and display publicly, and to permitothers to do so.
 
 Futhermore, this open source software can be redistributed and/or modified according to the terms of the 3-Clause BSD License below. Any modified code or derived works should be cleared marked so as to be differentiated from the version available here. The full text of the 3-Clause BSD License can be found in the section below.
 
@@ -23,15 +22,15 @@ Futhermore, this open source software can be redistributed and/or modified accor
 This program is open source under the BSD-3 License.
 Redistribution and use in source and binary forms, with or without modification, are permitted
 provided that the following conditions are met:
-	1. Redistributions of source code must retain the above copyright notice, this list of conditions and
-	the following disclaimer.
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 	 
-	2.Redistributions in binary form must reproduce the above copyright notice, this list of conditions
-	and the following disclaimer in the documentation and/or other materials provided with the
-	distribution.
+2.Redistributions in binary form must reproduce the above copyright notice, this list of conditions
+and the following disclaimer in the documentation and/or other materials provided with the distribution.
 	 
-	3.Neither the name of the copyright holder nor the names of its contributors may be used to endorse
-	or promote products derived from this software without specific prior written permission.
+3.Neither the name of the copyright holder nor the names of its contributors may be used to endorse
+or promote products derived from this software without specific prior written permission.
+
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
 IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR

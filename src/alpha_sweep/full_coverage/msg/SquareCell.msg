@@ -1,0 +1,5 @@
+geometry_msgs/PoseStamped tl_vertex
+geometry_msgs/PoseStamped tr_vertex
+geometry_msgs/PoseStamped bl_vertex
+geometry_msgs/PoseStamped br_vertex
+int32 occupancy_prob

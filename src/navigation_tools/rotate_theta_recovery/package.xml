@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format2.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="2">
+    <name>rotate_theta_recovery</name>
+    <version>1.15.2</version>
+    <description>
+
+        This package provides a recovery behavior for the navigation stack that attempts to clear space by performing a rotation of the robot with theta of rotation specified as a param. Copied from original rotate_recovery. left original author tag.
+
+    </description>
+    <author>Eitan Marder-Eppstein</author>
+    <author>contradict@gmail.com</author>
+    <maintainer email="avonsternberg@lanl.gov">Aaron Hoy</maintainer>
+    <license>BSD</license>
+    <url>http://wiki.ros.org/rotate_recovery</url>
+
+    <buildtool_depend>catkin</buildtool_depend>
+
+    <build_depend>base_local_planner</build_depend>
+    <build_depend>cmake_modules</build_depend>
+
+    <depend>costmap_2d</depend>
+    <depend>eigen</depend>
+    <depend>nav_core</depend>
+    <depend>pluginlib</depend>
+    <depend>roscpp</depend>
+    <depend>tf</depend>
+
+    <export>
+        <nav_core plugin="${prefix}/rotate_theta_plugin.xml" />
+    </export>
+
+</package>

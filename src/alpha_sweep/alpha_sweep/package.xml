@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>alpha_sweep</name>
+  <version>0.0.0</version>
+  <description>
+    Project for large area radiation surveys in semi-controlled environments.
+  </description>
+  <maintainer email="mlsymmank@lanl.gov">Meredith Symmank</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>full_coverage</exec_depend>
+  <exec_depend>robot_interface</exec_depend>
+  <exec_depend>sweep_gui</exec_depend>
+
+  <export>
+    <metapackage/>
+  </export>
+</package>

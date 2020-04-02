@@ -1,0 +1,8 @@
+geometry_msgs/PoseStamped start_pose
+bool second_attempt
+---
+bool start_invalid
+string text
+full_coverage/PlanInfo plan
+---
+float32 percent_complete

@@ -1,0 +1,6 @@
+geometry_msgs/PoseStamped start_pose
+geometry_msgs/PoseStamped[] poses
+bool replan
+---
+bool start_invalid
+geometry_msgs/PoseStamped[] plan_poses

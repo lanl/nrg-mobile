@@ -1,0 +1,3 @@
+geometry_msgs/PoseStamped[] visit_poses
+geometry_msgs/PoseStamped[] attempted_poses
+---

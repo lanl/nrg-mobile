@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="sweep_gui" name="sweep_gui" type="sweep_gui" launch-prefix="xterm -e gdb --args" output="screen">
+  </node>
+</launch>

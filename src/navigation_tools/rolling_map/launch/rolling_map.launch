@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="rolling_map" type="rolling_map_node" name="rolling_map_node" output="screen" respawn="true">
+    <rosparam file="$(find rolling_map)/param/rolling_map.yaml" command="load" />
+  </node>
+</launch>

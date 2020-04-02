@@ -1,0 +1,14 @@
+uint8 START=0
+uint8 STOP=1
+uint8 RESUME=2
+uint8 TURN=3
+uint8 DOCK=4
+uint8 UNDOCK=5
+uint8 type
+full_coverage/PlanInfo plan
+---
+uint8 type
+string text
+---
+geometry_msgs/PoseStamped[] visited_poses
+geometry_msgs/PoseStamped[] attempted_poses

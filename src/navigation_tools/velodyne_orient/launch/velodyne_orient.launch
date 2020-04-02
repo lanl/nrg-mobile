@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="velodyne_orient" name="velodyne_orient" type="velodyne_orient" output="screen">
+  </node>
+</launch>
