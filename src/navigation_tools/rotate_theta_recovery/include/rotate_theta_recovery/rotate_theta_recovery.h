@@ -3,7 +3,21 @@
 * Software License Agreement (BSD License)
 *
 *  Copyright (c) 2009, Willow Garage, Inc.
+*
+*  © (or copyright) 2020. Triad National Security, LLC.
 *  All rights reserved.
+*  This program was produced under U.S. Government contract 
+*  89233218CNA000001 for Los AlamosNational Laboratory (LANL), 
+*  which is operated by Triad National Security, LLC for the U.S.
+*  Department of Energy/National Nuclear Security Administration. 
+*  All rights in the program are reserved by Triad National 
+*  Security, LLC, and the U.S. Department of Energy/National Nuclear
+*  Security Administration. The Government is granted for itself 
+*  and others acting on its behalf a nonexclusive, paid-up, 
+*  irrevocable worldwide license in this material to reproduce, 
+*  prepare derivative works, distribute copies to the public, 
+*  perform publicly and display publicly, and to permit others 
+*  to do so.
 *
 *  Redistribution and use in source and binary forms, with or without
 *  modification, are permitted provided that the following conditions
@@ -15,7 +29,7 @@
 *     copyright notice, this list of conditions and the following
 *     disclaimer in the documentation and/or other materials provided
 *     with the distribution.
-*   * Neither the name of Willow Garage, Inc. nor the names of its
+*   * Neither the name of the copyright holder nor the names of its
 *     contributors may be used to endorse or promote products derived
 *     from this software without specific prior written permission.
 *
@@ -33,6 +47,7 @@
 *  POSSIBILITY OF SUCH DAMAGE.
 *
 * Author: Eitan Marder-Eppstein
+* Modifying Authors: Alex von Sternberg and Meredith Symmank
 *********************************************************************/
 #ifndef rotate_theta_recovery_H_
 #define rotate_theta_recovery_H_
@@ -86,7 +101,6 @@ namespace rotate_theta_recovery{
       costmap_2d::Costmap2DROS* global_costmap_, *local_costmap_;
       costmap_2d::Costmap2D costmap_;
       std::string name_;
-      // tf::TransformListener* tf_;
       bool initialized_;
       bool safe_turn_;
       double sim_granularity_, min_rotational_vel_, max_rotational_vel_, acc_lim_th_, tolerance_, frequency_, rotate_theta_;

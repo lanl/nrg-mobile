@@ -45,16 +45,18 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Addtional License Information
 
-The NRG-Mobile software project is based in the Robot Operating System (ROS) framework. It makes extensive use of external libraries and packages. Find copyrights to these associated packages below:
+The NRG-Mobile software project is based in the Robot Operating System (ROS) framework. It makes extensive use of external libraries and packages. Unless otherwise stated, packages are not modified and contribute to this project through linking. Those third party packages with modified source code will include the original licenses and copyrights in their respective source files. Other copyrights and attributed packages can be found below:
 
 1. ROS [libraries](https://www.ros.org): Framework for communication and structure of robotics software. Tools, libraries, and conventions for hardware agnostic operations of robotic systems.
 
-2. ROS [Navigation](http://wiki.ros.org/navigation): Navigation libraries within the ROS framework for controlling robot movement and path planning.
+2. ROS [Navigation](http://wiki.ros.org/navigation): Navigation libraries within the ROS framework for controlling robot movement and path planning. Specific recovery behavior files have been modified and include the original license and copyright in the modified source file.
 
-3. ROS [Octomap](http://wiki.ros.org/octomap): Mapping system within the ROS framework for handling 3D maps.
+3. Velodyne [drivers](http://wiki.ros.org/velodyne): Drivers for the Velodyne VLP-16 3D LIDAR sensor. This sensor generates 3D range data in a form known as a point cloud.
 
-4. Velodyne [drivers](http://wiki.ros.org/velodyne): Drivers for the Velodyne VLP-16 3D LIDAR sensor. This sensor generates 3D range data in a form known as a point cloud.
-
-5. ROS [Point Cloud Library (PCL)](http://wiki.ros.org/pcl): Library for handling operations with 3D data in point clouds. 
+4. ROS [Point Cloud Library (PCL)](http://wiki.ros.org/pcl): Library for handling operations with 3D data in point clouds. 
 
 5. [PyMC3](https://docs.pymc.io): Statistics library for Monte Carlo Estimation written in Python.
+
+6. [Qt5](https://www.qt.io/): Graphical framework for creating user interfaces. Libraries dynamically linked.
+
+7. ROS [Octomap](http://wiki.ros.org/octomap): Mapping system within the ROS framework for handling 3D maps. No files directly used, but some methods provided inspiration for original code. 
