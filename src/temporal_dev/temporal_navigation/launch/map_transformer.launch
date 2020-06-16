@@ -1,0 +1,19 @@
+<launch>
+  <node 
+    name="map_transform_publisher" 
+    pkg="tf" 
+    type="static_transform_publisher" 
+    args    = "0.0 0.0 0.0 0.0 0.0 0.0 1.000  map odom 100" 
+    respawn="true"/>
+   
+
+<!--HighbayHall-->
+<!--args    = "-4.3 31.8 0.0 0.0 0.0 0.0 1.000  map odom 100" -->
+
+<!--Highbay-->
+<!--args    = "1.0 12.5 0.0 0.0 0.0 0.0 1.000  map odom 100" --> 
+
+<!--testing1234-->
+<!--args    = "2.0 2.0 0.0 0.0 0.0 0.0 1.000  map base_link 100" -->
+
+</launch>

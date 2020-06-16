@@ -1,0 +1,21 @@
+<launch>
+  <arg name="laser_topic" default="/RosAria/S3Series_1_laserscan"/>
+
+  <include file="$(find pioneer_navigation)/launch/includes/gmapping.launch.xml" pass_all_args="true">
+	<arg name="laser_topic"  value="$(arg laser_topic)" />
+        <arg name="odom_frame"   default="odom"/>
+  </include>
+
+  <include file="$(find temporal_navigation)/launch/includes/move_base.launch.xml" pass_all_args="true"/>
+
+  <include file="$(find temporal_navigation)/launch/view_navigation.launch"/>
+  
+  <node 
+    name="sonar_transform_publisher" 
+    pkg="tf" 
+    type="static_transform_publisher" 
+    args    = "0.0 0.0 0.0 0.0 0.0 0.0 1.000  base_link sonar 100" 
+    respawn="true"/>
+
+
+</launch>

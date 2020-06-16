@@ -1,0 +1,11 @@
+# kdevelop config files
+.kdev_include_paths
+
+*.png
+*.csv
+# *.pgm
+*.map
+*.yaml
+data/*
+scripts/maps/old
+scripts/maps_safe_copy

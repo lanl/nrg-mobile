@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>temporal_dev</name>
+  <version>0.0.0</version>
+  <description>
+    Development package that seeks to extend normal navigation methods by adding temporal dimension relevance.
+  </description>
+  <maintainer email="mlsymmank@lanl.gov">Meredith Symmank</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>bayesian_stats</exec_depend>
+  <exec_depend>map_generation</exec_depend>
+  <exec_depend>temporal_navigation</exec_depend>
+  <exec_depend>topo_mapping</exec_depend>
+
+  <export>
+    <metapackage/>
+  </export>
+</package>

@@ -1,0 +1,36 @@
+<launch>
+
+
+  <node
+    name = "map_convert"
+    pkg  = "temporal_navigation"
+    type = "mapconvert.py"
+
+    output  = "screen"
+  /> 
+  
+  <node
+    name = "map_update"
+    pkg  = "temporal_navigation"
+    type = "mapupdate.py"
+
+    output  = "screen"
+  />
+
+  <node
+    name = "survival_filter"
+    pkg = "temporal_navigation"
+    type = "survival_filter"
+
+    output = "screen"
+  />
+
+  <node
+    name = "convert_map_gui"
+    pkg  = "temporal_navigation"
+    type = "convert_map_gui"
+
+    output  = "screen"
+  />
+
+</launch>

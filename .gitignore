@@ -2,5 +2,7 @@
 logs/*
 build/*
 devel/*
+src/ubiquity/*
+src/mimo/*
 .catkin_tools
 README_Template.md

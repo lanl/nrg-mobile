@@ -1,0 +1,35 @@
+<launch>
+
+  <arg name="map_file" default="$(find temporal_navigation)/scripts/maps/convert_output.yaml"/>
+  
+  
+  <node 
+    name="probability_map_generator" 
+    pkg="temporal_navigation" 
+    type="probability_map_generator" 
+    output="screen" 
+  /> 
+
+  <node 
+    name="localization_compute" 
+    pkg="temporal_navigation" 
+    type="localization_compute" 
+    output="screen" 
+  /> 
+
+ <node 
+    name="control_pioneer" 
+    pkg="temporal_navigation" 
+    type="control_pioneer" 
+    output="screen" 
+  />
+
+ <node
+   name="goal_drive"
+   pkg="temporal_navigation"
+   type="goal_drive"
+   output="screen"
+ /> 
+
+
+</launch>

@@ -1,0 +1,23 @@
+<launch>
+
+  <arg name="map_file"/>
+  <arg name="init_x"  default="0.0"/>
+  <arg name="init_y"  default="0.0"/>
+  <arg name="init_w"  default="0.0"/>
+  
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
+
+  <include file="$(find pioneer_navigation)/launch/includes/amcl.launch.xml">
+    <arg name="laser_topic" value="/rosarnl_node/S3Series_1_laserscan"/>
+    <arg name="initial_pose_x"  value="$(arg init_x)"/>
+    <arg name="initial_pose_y"  value="$(arg init_y)"/>
+    <arg name="initial_pose_w"  value="$(arg init_w)"/>
+  </include>
+    
+
+  <include file="$(find pioneer_navigation)/launch/includes/move_base.launch.xml">  
+    <arg name="laser_topic" value="/rosarnl_node/S3Series_1_laserscan"/>
+  </include>
+
+</launch>
+

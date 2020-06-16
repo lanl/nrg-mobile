@@ -1,0 +1,4 @@
+OccuPoint[] sensor_data
+int32[] persist_vec
+---
+ProbPoint[] posterior

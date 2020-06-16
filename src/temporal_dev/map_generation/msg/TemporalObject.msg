@@ -1,0 +1,13 @@
+geometry_msgs/Point loc
+geometry_msgs/Point prev_loc
+int32 px_w
+int32 px_l
+int32 type
+float64 up_alpha
+float64 up_beta
+float64 down_alpha
+float64 down_beta
+float64 loc_var
+int32 survival_time
+int32 up_status
+int32 id

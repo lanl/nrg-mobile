@@ -1,0 +1,3 @@
+std_msgs/String input_path
+std_msgs/String output_name
+---

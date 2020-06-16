@@ -1,0 +1,14 @@
+<launch>
+  <arg name="urdf" value="pioneer-lx.urdf"/>
+  <param name="robot_description" textfile="$(find pioneer_lx_description)/urdf/$(arg urdf)" />
+  
+  <include 
+     file="$(find pioneer_lx_description)/launch/display.launch" >
+     <arg name="launch_rviz" value="false"/> 
+   </include>
+
+  <remap from="/rviz/teleop/drive_cmd" to="rosarnl_node/cmd_vel"/>
+  <remap from="/rviz/teleop/dock" to="rosarnl_node/dock"/>
+  <remap from="/rviz/teleop/undock" to="rosarnl_node/undock"/>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find temporal_navigation)/rviz/navigation.rviz"/>
+</launch>

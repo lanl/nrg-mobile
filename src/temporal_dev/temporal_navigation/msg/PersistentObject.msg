@@ -1,0 +1,5 @@
+temporal_navigation/ObservedObject obsv_obj
+temporal_navigation/TemporalType temporal_type
+int32 up_time
+int32 down_time
+float32 confidence

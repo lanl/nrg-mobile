@@ -1,0 +1,28 @@
+<launch>
+
+
+  <node
+    name = "map_converter"
+    pkg  = "temporal_navigation"
+    type = "map_converter"
+
+    output  = "screen"
+  /> 
+  
+  <node
+    name = "map_updater"
+    pkg  = "temporal_navigation"
+    type = "map_updater"
+
+    output  = "screen"
+  />
+
+  <node
+    name = "survival_filter"
+    pkg = "temporal_navigation"
+    type = "survival_filter"
+
+    output = "screen"
+  />
+
+</launch>

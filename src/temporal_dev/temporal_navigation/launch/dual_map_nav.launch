@@ -1,0 +1,11 @@
+<launch>
+
+  <arg name="map_file" default="$(find temporal_navigation)/scripts/maps/bsa.yaml"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" /> 
+
+  <include file="$(find temporal_navigation)/launch/map_transformer.launch" />
+
+  <include file="$(find temporal_navigation)/launch/view_navigation.launch" />
+
+</launch>
+
