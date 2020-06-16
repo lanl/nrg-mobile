@@ -16,6 +16,12 @@ The NRG-Mobile repository is divided into two metapackages:
     * rotate_theta_recovery - Modified ROS navigation stack recovery behavior. For details see [here](http://wiki.ros.org/rotate_recovery?distro=melodic).
     * velodyne - Submodule for drivers to operate a Velodyne VLP-16 3D LIDAR. 
     * velodyne_orient - Tools to orient sensor information and clean the data for more efficient processing. 
+* temporal_dev - Development packages for spatio-temporal world modeling.
+    * bayesian_stats - Handles bayesian statistics involved with spatio-temporal mapping, including interfacing with PyMC3.
+    * map_generation - Testing package for generating simulated world spaces and obstacles.
+    * temporal_navigation - Main package for handling spatio-temporal map maintenance logic.
+    * topo_mapping - Framework for generic topological map. Plans to develop a room based topological hierarchy for memory considerations.
+* ubiquity - Packages relating to the specific hardware platform from [Ubiquity Robotics](https://www.ubiquityrobotics.com/). Includes the main software packages as a submodule from the Ubiquity Magni Github [repository](https://github.com/UbiquityRobotics). 
 
 ## Instructions for Running
 

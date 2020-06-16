@@ -60,3 +60,5 @@ The NRG-Mobile software project is based in the Robot Operating System (ROS) fra
 6. [Qt5](https://www.qt.io/): Graphical framework for creating user interfaces. Libraries dynamically linked.
 
 7. ROS [Octomap](http://wiki.ros.org/octomap): Mapping system within the ROS framework for handling 3D maps. No files directly used, but some methods provided inspiration for original code. 
+
+8. Ubiquity [Magni](https://github.com/UbiquityRobotics): Platform specific packages for the Ubiquity Robotics Magni system which is used in application testing.
