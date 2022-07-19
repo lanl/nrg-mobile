@@ -4,3 +4,4 @@ build/*
 devel/*
 .catkin_tools
 README_Template.md
+*.vscode
