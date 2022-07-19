@@ -96,7 +96,7 @@ RollingMapNode::RollingMapNode() :
 
   // Set up ROS communications
   pcSub = n.subscribe(param.pc_topic, 1, &RollingMapNode::pcCallback, this);
-  markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
+  // markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
   mapPub = n.advertise<nav_msgs::OccupancyGrid>(param.map_topic,1,true);
   readyPub = n.advertise<std_msgs::Bool>("ready",1,true);
   pointcloudPub = n.advertise<sensor_msgs::PointCloud2>("local_pointcloud", 1, true);
