@@ -5,7 +5,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(sweep_gui)
 
-set(CMAKE_CXX_FLAGS "-std=c++11 -g")
+set(CMAKE_CXX_FLAGS "-std=c++17 -g")
 
 ##############################################################################
 # Catkin

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(clear_area_recovery)
 
+add_compile_options(-std=c++17)
+
 find_package(catkin REQUIRED
         COMPONENTS
             cmake_modules
