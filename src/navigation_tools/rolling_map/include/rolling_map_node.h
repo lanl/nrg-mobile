@@ -54,7 +54,7 @@
 #include "std_srvs/Empty.h"
 #include "nav_msgs/OccupancyGrid.h"
 #include "rolling_map/Box.h"
-
+#include "sensor_msgs/PointCloud2.h"
 
 namespace rolling_map
 {
@@ -82,6 +82,7 @@ private:
   ros::NodeHandle n;
   ros::AsyncSpinner spinner;
   tf::TransformListener listener;
+  sensor_msgs::PointCloud2 output_cloud_;
   bool init;
 
   // Parameters
@@ -93,9 +94,10 @@ private:
   void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg);
 
   // Publish visual data and map
-  ros::Publisher markerPub;
+  // ros::Publisher markerPub;
   ros::Publisher mapPub;
   ros::Publisher readyPub;
+  ros::Publisher pointcloudPub;
   void publishMessages();
   bool isOccupied(int r, int c, const nav_msgs::OccupancyGrid &g);
 

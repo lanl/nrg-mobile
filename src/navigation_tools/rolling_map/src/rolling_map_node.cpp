@@ -99,8 +99,39 @@ RollingMapNode::RollingMapNode() :
   markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
   mapPub = n.advertise<nav_msgs::OccupancyGrid>(param.map_topic,1,true);
   readyPub = n.advertise<std_msgs::Bool>("ready",1,true);
+  pointcloudPub = n.advertise<sensor_msgs::PointCloud2>("local_pointcloud", 1, true);
   resetService = n.advertiseService(param.reset_topic, &RollingMapNode::resetCallback, this);
   clearBoxService = n.advertiseService("clear_box", &RollingMapNode::clearBoxCallback, this);
+
+  // Set up the output pointcloud
+  output_cloud_.header.frame_id = param.world_frame;
+  output_cloud_.header.seq = 0;
+  output_cloud_.height = 1;
+  output_cloud_.fields.resize(4);
+
+  output_cloud_.fields[0].name   = "x";
+  output_cloud_.fields[0].offset =  0 ;
+  output_cloud_.fields[0].count  =  1 ;
+  output_cloud_.fields[0].datatype = sensor_msgs::PointField::FLOAT32;
+
+  output_cloud_.fields[1].name   = "y";
+  output_cloud_.fields[1].offset =  4 ;
+  output_cloud_.fields[1].count  =  1 ;
+  output_cloud_.fields[1].datatype = sensor_msgs::PointField::FLOAT32;
+
+  output_cloud_.fields[2].name   = "z";
+  output_cloud_.fields[2].offset =  8 ;
+  output_cloud_.fields[2].count  =  1 ;
+  output_cloud_.fields[2].datatype = sensor_msgs::PointField::FLOAT32;
+
+  output_cloud_.fields[3].name   = "one";
+  output_cloud_.fields[3].offset =  12;
+  output_cloud_.fields[3].count  =  1 ;
+  output_cloud_.fields[3].datatype = sensor_msgs::PointField::FLOAT32;
+
+  output_cloud_.is_bigendian = false;
+  output_cloud_.point_step = 16;
+  output_cloud_.is_dense = true;
  
   spinner.start();
 
@@ -302,6 +333,7 @@ void RollingMapNode::publishMessages()
   std::vector<pcl::PointXYZ> points;
   int minXI, minYI;
   float minXP, minYP;
+  float minZP = map->getMinZP();
   map->getMap(points, minXI, minYI, minXP, minYP);
  
   if(mapPub.getNumSubscribers() > 0)
@@ -353,39 +385,56 @@ void RollingMapNode::publishMessages()
     mapPub.publish(grid);
   }
 
-  if(markerPub.getNumSubscribers() > 0)
-  {
-    // add points to marker array
-    visualization_msgs::Marker occupied;
-    occupied.header.frame_id = param.world_frame;
-    occupied.header.stamp = ros::Time::now();
-    occupied.ns = "map";
-    occupied.id = 1;
-    occupied.type = visualization_msgs::Marker::CUBE_LIST;
-    occupied.action = visualization_msgs::Marker::ADD;
-    occupied.pose.orientation.w = 1.0;
-    occupied.scale.x = map->getResolution();
-    occupied.scale.y = map->getResolution();
-    occupied.scale.z = map->getResolution();
+  // if(markerPub.getNumSubscribers() > 0)
+  // {
+  //   // add points to marker array
+  //   visualization_msgs::Marker occupied;
+  //   occupied.header.frame_id = param.world_frame;
+  //   occupied.header.stamp = ros::Time::now();
+  //   occupied.ns = "map";
+  //   occupied.id = 1;
+  //   occupied.type = visualization_msgs::Marker::CUBE_LIST;
+  //   occupied.action = visualization_msgs::Marker::ADD;
+  //   occupied.pose.orientation.w = 1.0;
+  //   occupied.scale.x = map->getResolution();
+  //   occupied.scale.y = map->getResolution();
+  //   occupied.scale.z = map->getResolution();
 
-    //std::cout << "publishing marker aray of size: " << points.size() << std::endl;
-    for(int i = 0; i < points.size(); i++)
-    {
-      geometry_msgs::Point center;
-      center.x = minXP + (points[i].x - minXI)*map->getResolution();
-      center.y = minYP + (points[i].y - minYI)*map->getResolution();
-      center.z = map->getMinZP() + points[i].z*map->getResolution();
-      occupied.points.push_back(center);
-      float heightPercent = points[i].z/map->getHeight();
-      std_msgs::ColorRGBA color;
-      color.r = 0;
-      color.g = heightPercent;
-      color.b = 1-heightPercent;
-      color.a = 1;
-      occupied.colors.push_back(color);
-    }
-    markerPub.publish(occupied);
-  }
+  //   //std::cout << "publishing marker aray of size: " << points.size() << std::endl;
+  //   for(int i = 0; i < points.size(); i++)
+  //   {
+  //     geometry_msgs::Point center;
+  //     center.x = minXP + (points[i].x - minXI)*map->getResolution();
+  //     center.y = minYP + (points[i].y - minYI)*map->getResolution();
+  //     center.z = map->getMinZP() + points[i].z*map->getResolution();
+  //     occupied.points.push_back(center);
+  //     float heightPercent = points[i].z/map->getHeight();
+  //     std_msgs::ColorRGBA color;
+  //     color.r = 0;
+  //     color.g = heightPercent;
+  //     color.b = 1-heightPercent;
+  //     color.a = 1;
+  //     occupied.colors.push_back(color);
+  //   }
+  //   markerPub.publish(occupied);
+  // }
+  
+  // Convert the points vector from indices to coordinates
+  const float res = map->getResolution();
+  std::for_each(points.begin(), points.end(), [&](pcl::PointXYZ& p){
+    p.x = minXP + (p.x - minXI)*res;
+    p.y = minYP + (p.y - minYI)*res;
+    p.z = minZP + p.z*res;
+  }); 
+
+  // Copy the data to the pointcloud message
+  output_cloud_.header.stamp = ros::Time::now();
+  output_cloud_.header.seq++;
+  output_cloud_.width = points.size();
+  output_cloud_.data.clear();
+  output_cloud_.data.resize(output_cloud_.point_step * output_cloud_.width);
+  memcpy(output_cloud_.data.data(), points.data(), output_cloud_.data.size());
+  pointcloudPub.publish(output_cloud_);
   
   // Ready pub
   std_msgs::Bool msg;
