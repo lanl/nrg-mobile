@@ -227,17 +227,29 @@ void RollingMap::setFree(int cloudSize, int maxRay, int* rayPoints, int* raySize
 {
   // write lock map mutex
   boost::unique_lock<boost::shared_mutex> mlock{mapMutex};  
+  std::list<Coord> removeable_coords;
 
   // iterate through free cells and erase them from map
+  #pragma omp parallel for
   for(int i = 0; i < cloudSize; i++)
   {
     for(int j = 0; j < raySizes[i]-1; j++)
     {
       Coord coord = newCoord(rayPoints[i*maxRay+j],rayPoints[i*maxRay+(cloudSize*maxRay)+j],rayPoints[i*maxRay+(2*cloudSize*maxRay)+j]);
-      map.erase(coord);
+      if (map.count(coord))
+      #pragma omp critical (record_coord)
+      {
+        removeable_coords.push_back(coord);
+        // map.erase(coord);
+      }
     }
   }
+
+  for (const Coord& c : removeable_coords){
+    map.erase(c);
+  }
 }
+
 #else
 void RollingMap::setFree(CellMap &free)
 {
