@@ -56,6 +56,10 @@
 #include "rolling_map/Box.h"
 #include "sensor_msgs/PointCloud2.h"
 
+#ifdef TIMEIT
+#include "cpp_timer/Timer.h"
+#endif
+
 namespace rolling_map
 {
 struct MapParams
@@ -125,6 +129,15 @@ public:
   ~RollingMapNode();
   bool isInit();
   void run();
+
+  #ifdef TIMEIT
+  std::unique_ptr<cpp_timer::Timer> main_timer;
+  std::unique_ptr<cpp_timer::Timer> callback_timer;
+  #else
+  std::unique_ptr<char> decoy1;
+  std::unique_ptr<char> decoy2;
+  #endif
+
 
 };
 

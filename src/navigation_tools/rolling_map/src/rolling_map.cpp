@@ -49,7 +49,19 @@
 #include "omp.h"
 #include <algorithm>
 #include "ros/console.h"
-//#include <chrono>
+
+#ifdef TIMEIT
+#define TIMER_INSTANCE timer
+#define TIC(x) timer->tic(x);
+#define TOC(x) timer->toc(x);
+#define ATIC TIMER_PTIC;
+#define ATOC TIMER_PTOC;
+#else
+#define TIC(x)
+#define TOC(x)
+#define ATIC
+#define ATOC
+#endif
 
 namespace rolling_map
 {
@@ -64,6 +76,9 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
   minXI(0),
   minYI(0)
 {
+  timer = std::make_unique<cpp_timer::Timer>();
+  timer->allow_interruption = true;
+
   // lock the mutex to prevent callbacks from starting early
   boost::unique_lock<boost::shared_mutex> tlock{translateMutex};  
 
@@ -84,15 +99,19 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
 
 RollingMap::~RollingMap()
 {
-  // do nothing
+  #ifdef TIMEIT
+  timer->summary(cpp_timer::Timer::BY_AVERAGE);
+  #endif
 }
 
 void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const pcl::PointXYZ &sensorOrigin)
 {
+  ATIC;
   // do not insert while we are translating the map
   boost::shared_lock<boost::shared_mutex> tlock{translateMutex};  
 
 #ifdef USE_CUDA
+  TIC("GetOccupiedPoints")
   CellMap occupied;
   int cloudSize = scancloud.size();
   int maxRay = getWidth() + (getHeight()/2.0) + 1; 
@@ -139,14 +158,17 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
     iPoints[cloudSize+i] = temp.y;
     iPoints[2*cloudSize+i] = temp.z;
   }
+  TOC("GetOccupiedPoints")
 
   // cast all rays on gpu for multithreading
   //std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+  TIC("CastRays")
   if(!castRays(fPoints, iPoints, cloudSize, maxRay, fStart, iStart, fStartVoxel, rayPoints, raySizes, getMinXI(), getMaxXI(), getMinYI(), getMaxYI(), getMinZI(), getMaxZI(), resolution))
   {
     ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Error in cuda castRays function.");
     return;
   }
+  TOC("CastRays")
 
   //std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
   //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
@@ -154,10 +176,14 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   //t1 = std::chrono::high_resolution_clock::now(); 
  
   // update free cells
+  TIC("SetFree")
   setFree(cloudSize, maxRay, rayPoints, raySizes);
+  TOC("SetFree")
 
   // set occupied cells
+  TIC("SetOccupied")
   setOccupied(occupied);
+  TOC("SetOccupied")
   //t2 = std::chrono::high_resolution_clock::now();
   //duration = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
   //std::cout << "set free/occupied took " << duration << " microseconds." << std::endl;
@@ -193,6 +219,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   setOccupied(occupied);
   //std::cout << "set free/occupied took " << (ros::Time::now()-start).toSec() << " seconds." << std::endl;
 #endif
+  ATOC;
 }
 
 #ifdef USE_CUDA

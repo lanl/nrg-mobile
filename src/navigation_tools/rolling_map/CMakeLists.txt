@@ -42,6 +42,8 @@ SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 
+find_package(cpp_timer)
+
 # -------------------------------------
 
 
@@ -103,5 +105,10 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 ## Create an executable node for creating a rolling map in ROS
 add_executable(${PROJECT_NAME}_node src/rolling_map_node.cpp)
 target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME} ${catkin_LIBRARIES})
+
+if (cpp_timer_FOUND)
+  add_definitions(-DTIMEIT)
+  target_link_libraries(${PROJECT_NAME}_node cpp_timer)
+endif()
 
 # -------------------------------------

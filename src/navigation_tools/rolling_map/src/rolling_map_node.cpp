@@ -52,6 +52,26 @@
 #include "pcl/filters/filter.h"
 #include "std_msgs/Bool.h"
 #include "tf/transform_datatypes.h"
+#include <csignal>
+#include <functional>
+
+#ifdef TIMEIT
+#define M_TIC(x)   main_timer->tic(x)
+#define M_TOC(x)   main_timer->toc(x)
+#define CB_TIC(x)  callback_timer->tic(x)
+#define CB_TOC(x)  callback_timer->toc(x)
+#else
+#define TIC
+#define TOC
+#endif
+
+static std::unique_ptr<rolling_map::RollingMapNode> node;
+
+std::function<void(int)> sigintHandler;
+void handle(int signal){
+  if(sigintHandler) sigintHandler(signal);
+  ros::shutdown();
+}
 
 namespace rolling_map
 {
@@ -62,6 +82,12 @@ RollingMapNode::RollingMapNode() :
   init(false),
   hasData(false)
 {
+  main_timer = std::unique_ptr<cpp_timer::Timer> (new cpp_timer::Timer());
+  main_timer->allow_interruption = true;
+
+  callback_timer = std::unique_ptr<cpp_timer::Timer> (new cpp_timer::Timer());
+  callback_timer->allow_interruption = true;
+
   // Get params
   if(!n.getParam("pc_topic", param.pc_topic) ||
      !n.getParam("map_topic", param.map_topic) ||
@@ -142,6 +168,7 @@ RollingMapNode::RollingMapNode() :
 
 RollingMapNode::~RollingMapNode()
 {
+  delete map;
   // do nothing
 }
 
@@ -188,13 +215,17 @@ bool RollingMapNode::getTransform(tf::StampedTransform &transform, bool init)
 
 void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg)
 {
+  CB_TIC("pcCallback");
   //ROS_INFO_STREAM_THROTTLE(1.0, "RollingMapNode: pcCallback receiving pointcloud on " << param.pc_topic << ", frame is " << msg->header.frame_id);
   // Remove NaN values, if any.
+  CB_TIC("RemoveNaN");
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
   std::vector<int> indices;
   pcl::removeNaNFromPointCloud(*msg, *cloud, indices);
+  CB_TOC("RemoveNaN");
 
   // transform point cloud to world frame
+  CB_TIC("TransformPointcloud");
   tf::StampedTransform sensorTransform;
   sensorTransform.frame_id_ = cloud->header.frame_id;
   sensorTransform.child_frame_id_ = param.world_frame;
@@ -204,12 +235,17 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
     return;
   }
   pcl_ros::transformPointCloud(*cloud,*cloud,sensorTransform);
+  CB_TOC("TransformPointcloud");
 
   // pull out vector of points and insert cloud
+  CB_TIC("insertCloud");
   std::vector<pcl::PointXYZ> points(cloud->begin(),cloud->end());
   pcl::PointXYZ origin(sensorTransform.getOrigin().x(),sensorTransform.getOrigin().y(),sensorTransform.getOrigin().z());
   map->insertCloud(points,origin);
   hasData = true;
+  CB_TOC("insertCloud");
+
+  CB_TOC("pcCallback");
 }
 
 void RollingMapNode::createAdjustmentVector(const tf::StampedTransform &sensorTransform, std::vector<pcl::PointXYZ> &points)
@@ -330,12 +366,15 @@ void RollingMapNode::checkTranslation()
 void RollingMapNode::publishMessages()
 {
   // get a copy of the current map
+  M_TIC("getMap");
   std::vector<pcl::PointXYZ> points;
   int minXI, minYI;
   float minXP, minYP;
   float minZP = map->getMinZP();
   map->getMap(points, minXI, minYI, minXP, minYP);
+  M_TOC("getMap");
  
+  M_TIC("publishMap");
   if(mapPub.getNumSubscribers() > 0)
   {
     // set up grid info
@@ -384,6 +423,7 @@ void RollingMapNode::publishMessages()
 
     mapPub.publish(grid);
   }
+  M_TOC("publishMap");
 
   // if(markerPub.getNumSubscribers() > 0)
   // {
@@ -420,6 +460,7 @@ void RollingMapNode::publishMessages()
   // }
   
   // Convert the points vector from indices to coordinates
+  M_TIC("publishPointcloud");
   const float res = map->getResolution();
   std::for_each(points.begin(), points.end(), [&](pcl::PointXYZ& p){
     p.x = minXP + (p.x - minXI)*res;
@@ -435,6 +476,7 @@ void RollingMapNode::publishMessages()
   output_cloud_.data.resize(output_cloud_.point_step * output_cloud_.width);
   memcpy(output_cloud_.data.data(), points.data(), output_cloud_.data.size());
   pointcloudPub.publish(output_cloud_);
+  M_TOC("publishPointcloud");
   
   // Ready pub
   std_msgs::Bool msg;
@@ -471,12 +513,21 @@ void RollingMapNode::run()
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "rolling_map");
+  ros::init(argc, argv, "rolling_map", ros::init_options::NoSigintHandler);
 
-  rolling_map::RollingMapNode node;
+  node = std::make_unique<rolling_map::RollingMapNode>();
 
-  if(node.isInit())
-    node.run();
+  sigintHandler = [](int signal){
+    #ifdef TIMEIT
+    node->main_timer->summary(cpp_timer::Timer::BY_AVERAGE);
+    node->callback_timer->summary(cpp_timer::Timer::BY_AVERAGE);
+    node->~RollingMapNode();
+    #endif
+  };
+  std::signal(SIGINT, handle);
+
+  if(node->isInit())
+    node->run();
   else
     ROS_ERROR("Rolling map node failed to initialize.");
 

@@ -55,6 +55,10 @@
 #include "boost/thread/shared_mutex.hpp"
 #include "pcl_ros/point_cloud.h"
 
+#ifdef TIMEIT
+#include "cpp_timer/Timer.h"
+#endif
+
 #ifdef USE_CUDA
 bool castRays(float* fPoints, int* iPoints, int cloudSize, int maxRay, float* fStart, int* iStart, float* fStartVoxel, 
               int* outPoints, int* outSizes, int minX, int maxX, int minY, int maxY, int minZ, int maxZ, float resolution);
@@ -231,6 +235,12 @@ public:
   float getMaxZP();
   int getMinZI();
   int getMaxZI();
+
+  #ifdef TIMEIT
+  std::unique_ptr<cpp_timer::Timer> timer;
+  #else
+  private: std::unique_ptr<char> decoy_;
+  #endif
 
 }; // RollingMap
 
