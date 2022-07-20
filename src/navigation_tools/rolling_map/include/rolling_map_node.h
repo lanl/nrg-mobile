@@ -98,7 +98,7 @@ private:
   void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg);
 
   // Publish visual data and map
-  // ros::Publisher markerPub;
+  ros::Publisher markerPub;
   ros::Publisher mapPub;
   ros::Publisher readyPub;
   ros::Publisher pointcloudPub;

@@ -122,7 +122,7 @@ RollingMapNode::RollingMapNode() :
 
   // Set up ROS communications
   pcSub = n.subscribe(param.pc_topic, 1, &RollingMapNode::pcCallback, this);
-  // markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
+  markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
   mapPub = n.advertise<nav_msgs::OccupancyGrid>(param.map_topic,1,true);
   readyPub = n.advertise<std_msgs::Bool>("ready",1,true);
   pointcloudPub = n.advertise<sensor_msgs::PointCloud2>("local_pointcloud", 1, true);
@@ -425,39 +425,41 @@ void RollingMapNode::publishMessages()
   }
   M_TOC("publishMap");
 
-  // if(markerPub.getNumSubscribers() > 0)
-  // {
-  //   // add points to marker array
-  //   visualization_msgs::Marker occupied;
-  //   occupied.header.frame_id = param.world_frame;
-  //   occupied.header.stamp = ros::Time::now();
-  //   occupied.ns = "map";
-  //   occupied.id = 1;
-  //   occupied.type = visualization_msgs::Marker::CUBE_LIST;
-  //   occupied.action = visualization_msgs::Marker::ADD;
-  //   occupied.pose.orientation.w = 1.0;
-  //   occupied.scale.x = map->getResolution();
-  //   occupied.scale.y = map->getResolution();
-  //   occupied.scale.z = map->getResolution();
+  M_TIC("publishMarkers");
+  if(markerPub.getNumSubscribers() > 0)
+  {
+    // add points to marker array
+    visualization_msgs::Marker occupied;
+    occupied.header.frame_id = param.world_frame;
+    occupied.header.stamp = ros::Time::now();
+    occupied.ns = "map";
+    occupied.id = 1;
+    occupied.type = visualization_msgs::Marker::CUBE_LIST;
+    occupied.action = visualization_msgs::Marker::ADD;
+    occupied.pose.orientation.w = 1.0;
+    occupied.scale.x = map->getResolution();
+    occupied.scale.y = map->getResolution();
+    occupied.scale.z = map->getResolution();
 
-  //   //std::cout << "publishing marker aray of size: " << points.size() << std::endl;
-  //   for(int i = 0; i < points.size(); i++)
-  //   {
-  //     geometry_msgs::Point center;
-  //     center.x = minXP + (points[i].x - minXI)*map->getResolution();
-  //     center.y = minYP + (points[i].y - minYI)*map->getResolution();
-  //     center.z = map->getMinZP() + points[i].z*map->getResolution();
-  //     occupied.points.push_back(center);
-  //     float heightPercent = points[i].z/map->getHeight();
-  //     std_msgs::ColorRGBA color;
-  //     color.r = 0;
-  //     color.g = heightPercent;
-  //     color.b = 1-heightPercent;
-  //     color.a = 1;
-  //     occupied.colors.push_back(color);
-  //   }
-  //   markerPub.publish(occupied);
-  // }
+    //std::cout << "publishing marker aray of size: " << points.size() << std::endl;
+    for(int i = 0; i < points.size(); i++)
+    {
+      geometry_msgs::Point center;
+      center.x = minXP + (points[i].x - minXI)*map->getResolution();
+      center.y = minYP + (points[i].y - minYI)*map->getResolution();
+      center.z = map->getMinZP() + points[i].z*map->getResolution();
+      occupied.points.push_back(center);
+      float heightPercent = points[i].z/map->getHeight();
+      std_msgs::ColorRGBA color;
+      color.r = 0;
+      color.g = heightPercent;
+      color.b = 1-heightPercent;
+      color.a = 1;
+      occupied.colors.push_back(color);
+    }
+    markerPub.publish(occupied);
+  }
+  M_TOC("publishMarkers");
   
   // Convert the points vector from indices to coordinates
   M_TIC("publishPointcloud");
