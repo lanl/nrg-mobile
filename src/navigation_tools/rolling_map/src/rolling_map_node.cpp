@@ -111,6 +111,7 @@ RollingMapNode::RollingMapNode() :
   // Find current location of the sensor
   robotTransform.frame_id_ = param.robot_frame;
   robotTransform.child_frame_id_ = param.world_frame;
+  ros::Duration(3).sleep();
   if(!getTransform(robotTransform, true))
   {
     ROS_ERROR("RollingMapNode: Could not look up initial robot transform. cannot initialize map.");
@@ -232,6 +233,7 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
   if(!getTransform(sensorTransform))
   {
     ROS_ERROR_THROTTLE(1.0, "RollingMapNode: Could not insert point cloud because we could not look up transform from cloud frame to world frame");
+    CB_TOC("TransformPointcloud");
     return;
   }
   pcl_ros::transformPointCloud(*cloud,*cloud,sensorTransform);
