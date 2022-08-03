@@ -59,9 +59,12 @@
 #include "cpp_timer/Timer.h"
 #endif
 
+#define cuda_ptr
+
 #ifdef USE_CUDA
-bool castRays(float* fPoints, int* iPoints, int cloudSize, int maxRay, float* fStart, int* iStart, float* fStartVoxel, 
-              int* outPoints, int* outSizes, int minX, int maxX, int minY, int maxY, int minZ, int maxZ, float resolution);
+#define CUDA_ONLY(x) x
+#else
+#define CUDA_ONLY(x)
 #endif
 
 namespace rolling_map
@@ -70,7 +73,6 @@ namespace rolling_map
 //typedef std::atomic<bool>*** BoolArray;
 struct Coord
 {
-public:
   int x;
   int y;
   int z;
@@ -122,6 +124,8 @@ private:
   int minYI;
   boost::shared_mutex mapMutex;        // Mutex for thread safety when we translate the map
   boost::shared_mutex translateMutex;  // Mutex for thread safety when we translate the map
+  cuda_ptr char* d_voxel_grid_;
+  bool cuda_ok = true;
 
   void clearX(int shift);
   void clearY(int shift);
@@ -235,6 +239,9 @@ public:
   float getMaxZP();
   int getMinZI();
   int getMaxZI();
+
+  bool castRays(const std::vector<pcl::PointXYZ>& points, int cloudSize, int maxRay, const pcl::PointXYZ& sensor_origin, float* fStartVoxel, 
+              int* outPoints, int* outSizes);
 
   #ifdef TIMEIT
   std::unique_ptr<cpp_timer::Timer> timer;

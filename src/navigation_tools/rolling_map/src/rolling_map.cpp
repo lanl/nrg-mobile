@@ -49,6 +49,7 @@
 #include "omp.h"
 #include <algorithm>
 #include "ros/console.h"
+#include <cuda_runtime.h>
 
 #ifdef TIMEIT
 #define TIMER_INSTANCE timer
@@ -61,6 +62,20 @@
 #define TOC(x)
 #define ATIC
 #define ATOC
+#endif
+
+#ifdef USE_CUDA
+
+#define CUDA_SAFE(command)                                                                                                                 \
+if (cuda_ok){                                                                                                                              \
+    cudaError_t err = command;                                                                                                             \
+    cuda_ok = cuda_ok && (err == cudaSuccess);                                                                                             \
+    if (not cuda_ok) {                                                                                                                     \
+        const char* err_s = cudaGetErrorString(err);                                                                                       \
+        ROS_WARN("Cuda Error [%d]\nFailed Command: \"%s\"\nError: %s\nAt line %d of %s", (int)(err), #command, err_s, __LINE__, __FILE__); \
+    }                                                                                                                                      \
+}
+
 #endif
 
 namespace rolling_map
@@ -76,8 +91,10 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
   minXI(0),
   minYI(0)
 {
+  #ifdef TIMEIT
   timer = std::make_unique<cpp_timer::Timer>();
   timer->allow_interruption = true;
+  #endif
 
   // lock the mutex to prevent callbacks from starting early
   boost::unique_lock<boost::shared_mutex> tlock{translateMutex};  
@@ -95,6 +112,13 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
   }
   minXP = x0;
   minYP = y0;
+
+  CUDA_ONLY(
+    int num_voxels = width*width*height;
+    size_t mem_size = sizeof(decltype(*d_voxel_grid_))*num_voxels;
+    CUDA_SAFE(cudaMalloc(&d_voxel_grid_, mem_size));
+    CUDA_SAFE(cudaMemset(d_voxel_grid_, 0, mem_size));
+  );
 }
 
 RollingMap::~RollingMap()
@@ -102,6 +126,8 @@ RollingMap::~RollingMap()
   #ifdef TIMEIT
   timer->summary(cpp_timer::Timer::BY_AVERAGE);
   #endif
+
+  CUDA_ONLY(cudaFree(d_voxel_grid_));
 }
 
 void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const pcl::PointXYZ &sensorOrigin)
@@ -115,8 +141,6 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   CellMap occupied;
   int cloudSize = scancloud.size();
   int maxRay = getWidth() + (getHeight()/2.0) + 1; 
-  float* fPoints = new float[cloudSize*3]; 
-  int* iPoints= new int[cloudSize*3];
   float fStart[3] = {sensorOrigin.x, sensorOrigin.y, sensorOrigin.z};
   int iStart[3] = {0,0,0};
   float fStartVoxel[3] = {0,0,0};
@@ -149,21 +173,13 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
     {
       occupied.insert(temp);
     }
-
-    // prepare points to be sent to cast rays function
-    fPoints[i] = scancloud[i].x;
-    fPoints[cloudSize+i] = scancloud[i].y;
-    fPoints[2*cloudSize+i] = scancloud[i].z;
-    iPoints[i] = temp.x;
-    iPoints[cloudSize+i] = temp.y;
-    iPoints[2*cloudSize+i] = temp.z;
   }
   TOC("GetOccupiedPoints")
 
   // cast all rays on gpu for multithreading
   //std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
   TIC("CastRays")
-  if(!castRays(fPoints, iPoints, cloudSize, maxRay, fStart, iStart, fStartVoxel, rayPoints, raySizes, getMinXI(), getMaxXI(), getMinYI(), getMaxYI(), getMinZI(), getMaxZI(), resolution))
+  if(!castRays(scancloud, cloudSize, maxRay, sensorOrigin, fStartVoxel, rayPoints, raySizes))
   {
     ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Error in cuda castRays function.");
     return;
@@ -189,8 +205,6 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   //std::cout << "set free/occupied took " << duration << " microseconds." << std::endl;
   delete raySizes;
   delete rayPoints;
-  delete iPoints;
-  delete fPoints;
 #else
   ros::Time start = ros::Time::now();
   //std::cout << "new cloud insert" << std::endl;
