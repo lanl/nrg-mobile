@@ -49,12 +49,58 @@
 #include <stdlib.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <rolling_map.h>
 
 #define THREADS_PER_BLOCK 256
 
+__constant__ int c_width;
+__constant__ int c_height;
+__constant__ float c_resolution;
+__constant__ float c_min_x;
+__constant__ float c_min_y;
+__constant__ float c_min_z;
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
+__device__ rolling_map::Coord toIndex(const pcl::PointXYZ& p){
+  rolling_map::Coord idx;
+  idx.x = (p.x - c_min_x)/c_resolution;
+  idx.y = (p.y - c_min_y)/c_resolution;
+  idx.z = (p.z - c_min_z)/c_resolution;
+  return idx;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
+__device__ void markVoxel(char* voxel_grid, int x, int y, int z){
+  size_t flat_idx = c_width*c_width*z + c_width*y + x;
+  char* byte = voxel_grid + flat_idx/8;
+  char bit_mask = flat_idx % 8;
+  *byte |= bit_mask;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
+__device__ void freeVoxel(char* voxel_grid, int x, int y, int z){
+  size_t flat_idx = c_width*c_width*z + c_width*y + x;
+  char* byte = voxel_grid + flat_idx/8;
+  char bit_mask = flat_idx % 8;
+  *byte &= ~bit_mask;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
 __device__ bool d_error;
 
-__global__ void crs(float* fPoints, int* iPoints, int cloudSize, int maxRay, float* fStart, int* iStart, float* fStartVoxel, int* outPoints, int* outSizes, int* min, int* max, float resolution)
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
+__global__ void crs(pcl::PointXYZ* fPoints, int cloudSize, int maxRay, const pcl::PointXYZ* sensor_origin, float* fStartVoxel, int* outPoints, int* outSizes, char* voxel_grid)
 {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -65,8 +111,13 @@ __global__ void crs(float* fPoints, int* iPoints, int cloudSize, int maxRay, flo
   // init vars
   bool done = false;
 
+  // Get the information about the current point
+  pcl::PointXYZ& point = fPoints[index];
+  rolling_map::Coord point_idx = toIndex(point);
+  rolling_map::Coord start_idx = toIndex(*sensor_origin); 
+
   // calculate normal vector in direction of sensor->point
-  float direction[3] = {fPoints[index]-fStart[0], fPoints[cloudSize+index]-fStart[1], fPoints[2*cloudSize+index]-fStart[2]};
+  float direction[3] = {point.x-sensor_origin->x, point.y-sensor_origin->y, point.z-sensor_origin->z};
   float directionMagnitude = powf(powf(direction[0],2) + powf(direction[1],2) + powf(direction[2],2),0.5);
 
   // variables used for ray casting algorithm
@@ -74,27 +125,23 @@ __global__ void crs(float* fPoints, int* iPoints, int cloudSize, int maxRay, flo
   float accumulatedError[3];   // error accumulated in each direction
   float deltaError[3];         // change in error accumulated for a step in a direction
   int currentIndex[3];         // for tracking the index as we trace
-  int pointIndex[3];           // index of final occupied point
   bool usePI = true;          // we only check for the final point if it is on the map, 
                                // otherwise we are done when we leave the map
 
   // Set the starting position to the sensor position, and the final index
   for(int i = 0; i < 3; i++)
   {
-    currentIndex[i] = iStart[i];
+    currentIndex[i] = ((int*)(&start_idx))[i];
   }
-  pointIndex[0] = iPoints[index];
-  pointIndex[1] = iPoints[cloudSize+index];
-  pointIndex[2] = iPoints[2*cloudSize+index];
 
   // If the occupied point is in the map, we use it as a stopping point
-  if(pointIndex[0] < min[0] || pointIndex[0] > max[0] ||
-     pointIndex[1] < min[1] || pointIndex[1] > max[1] ||
-     pointIndex[2] < min[2] || pointIndex[2] > max[2])
+  if(point_idx.x < 0 || point_idx.x > c_width ||
+     point_idx.y < 0 || point_idx.y > c_width ||
+     point_idx.z < 0 || point_idx.z > c_height)
     usePI = false;
 
   // check direction magnitude for divide by zero or same cell
-  if(fabs(directionMagnitude) < resolution)
+  if(fabs(directionMagnitude) < c_resolution)
   {
     d_error = true;
     return;
@@ -109,9 +156,9 @@ __global__ void crs(float* fPoints, int* iPoints, int cloudSize, int maxRay, flo
     else if(direction[dir] < 0.0)
       stepDirection[dir] = -1;
 
-    float voxelBorder = fStartVoxel[dir] + stepDirection[dir]*resolution*0.5;
-    accumulatedError[dir] = fdividef((voxelBorder - fStart[dir]),direction[dir]);
-    deltaError[dir] = fdividef(resolution,fabs(direction[dir]));
+    float voxelBorder = fStartVoxel[dir] + stepDirection[dir]*c_resolution*0.5;
+    accumulatedError[dir] = fdividef((voxelBorder - ((float*)sensor_origin)[dir]),direction[dir]);
+    deltaError[dir] = fdividef(c_resolution,fabs(direction[dir]));
   }
   
   int count = 0;
@@ -132,18 +179,18 @@ __global__ void crs(float* fPoints, int* iPoints, int cloudSize, int maxRay, flo
     // done if we are at occ point
     if(usePI)
     {
-      if(currentIndex[0] == pointIndex[0] &&
-         currentIndex[1] == pointIndex[1] &&
-         currentIndex[2] == pointIndex[2])
+      if(currentIndex[0] == point_idx.x &&
+         currentIndex[1] == point_idx.y &&
+         currentIndex[2] == point_idx.z)
       {
         done = true;
       }
     }
 
     // if we are off the map, we are done. 
-    if(currentIndex[0] < min[0] || currentIndex[0] > max[0] ||
-       currentIndex[1] < min[1] || currentIndex[1] > max[1] ||
-       currentIndex[2] < min[2] || currentIndex[2] > max[2])
+    if(currentIndex[0] < 0 || currentIndex[0] > c_width ||
+       currentIndex[1] < 0 || currentIndex[1] > c_width ||
+       currentIndex[2] < 0 || currentIndex[2] > c_height)
     {
       done = true;
     }
@@ -161,52 +208,44 @@ __global__ void crs(float* fPoints, int* iPoints, int cloudSize, int maxRay, flo
   return;
 }
 
-bool castRays(float* fPoints, int* iPoints, int cloudSize, int maxRay, float* fStart, int* iStart, float* fStartVoxel, int* outPoints, int* outSizes, int minX, int maxX, int minY, int maxY, int minZ, int maxZ, float resolution) 
+// ================================================================================================
+// ================================================================================================
+// ================================================================================================
+
+bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points, int cloudSize, int maxRay, const pcl::PointXYZ& sensor_origin, float* fStartVoxel, int* outPoints, int* outSizes) 
 {
   // Device copies of three inputs and output, size of allocated memory, num of threads and blocks
-  float *d_fPoints, *d_fStart, *d_fStartVoxel;
-  int *d_iPoints, *d_outPoints, *d_iStart, *d_outSizes, *d_min, *d_max;
-  int min[3] = {minX, minY, minZ};
-  int max[3] = {maxX, maxY, maxZ};
+  pcl::PointXYZ *d_fPoints, *d_fStart;
+  float *d_fStartVoxel;
+  int *d_outPoints, *d_iStart, *d_outSizes, *d_min, *d_max;
   int thr, blk;
   bool h_error = false;
   int temp;
-  for(int i = 0; i < 3; i ++)
-  {
-    if(min[i] > max[i])
-    {
-      temp = min[i];
-      min[i] = max[i];
-      max[i] = temp;
-    }
-  }
-  //cudaMemset(&d_error,0,sizeof(bool));
+  cudaMemset(&d_error,0,sizeof(bool));
+
+  // Copy constant values over to device
+  cudaMemcpyToSymbol(c_resolution, &this->resolution, sizeof(resolution));
+  cudaMemcpyToSymbol(c_min_x, &this->minXP, sizeof(float));
+  cudaMemcpyToSymbol(c_min_y, &this->minYP, sizeof(float));
+  cudaMemcpyToSymbol(c_min_z, &this->z0,    sizeof(float));
 
   // Alloc memory for device copies of inputs and outputs
-  cudaMalloc((void**)&d_fPoints, ((cloudSize*3) * sizeof(float)));
-  cudaMalloc((void**)&d_iPoints, ((cloudSize*3) * sizeof(int)));
-  cudaMalloc((void**)&d_fStart, (3 * sizeof(float)));
-  cudaMalloc((void**)&d_iStart, (3 * sizeof(int)));
+  cudaMalloc((void**)&d_fPoints, ((cloudSize) * sizeof(pcl::PointXYZ)));
+  cudaMalloc((void**)&d_fStart, (sizeof(pcl::PointXYZ)));
   cudaMalloc((void**)&d_fStartVoxel, (3 * sizeof(float)));
-  cudaMalloc((void**)&d_min, (3 * sizeof(int)));
-  cudaMalloc((void**)&d_max, (3 * sizeof(int)));
   cudaMalloc((void**)&d_outPoints, ((cloudSize*maxRay*3) * sizeof(int)));
   cudaMalloc((void**)&d_outSizes, (cloudSize * sizeof(int)));
 
   // Copy inputs to device
-  cudaMemcpy(d_fPoints, fPoints, ((cloudSize*3) * sizeof(float)), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_iPoints, iPoints, ((cloudSize*3) * sizeof(int)), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_fStart, fStart, (3 * sizeof(float)), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_iStart, iStart, (3 * sizeof(int)), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_fPoints, points.data(), ((cloudSize) * sizeof(pcl::PointXYZ)), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_fStart, &sensor_origin, (sizeof(pcl::PointXYZ)), cudaMemcpyHostToDevice);
   cudaMemcpy(d_fStartVoxel, fStartVoxel, (3 * sizeof(float)), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_min, min, (3 * sizeof(int)), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_max, max, (3 * sizeof(int)), cudaMemcpyHostToDevice);
 
   // Calculates blocks and threads and launch average3 kernel on GPU
   thr=THREADS_PER_BLOCK;
   blk=cloudSize/THREADS_PER_BLOCK+1;
-  crs<<<blk,thr>>>(d_fPoints, d_iPoints, cloudSize, maxRay, d_fStart, d_iStart, d_fStartVoxel, d_outPoints, 
-                   d_outSizes, d_min, d_max, resolution);
+  crs<<<blk,thr>>>(d_fPoints, cloudSize, maxRay, d_fStart, d_fStartVoxel, d_outPoints, 
+                   d_outSizes, d_voxel_grid_);
 
   // Wait for the GPU to finish
   cudaDeviceSynchronize();
@@ -214,15 +253,11 @@ bool castRays(float* fPoints, int* iPoints, int cloudSize, int maxRay, float* fS
   //// Copy result back to host and cleanup
   cudaMemcpy(outPoints, d_outPoints, (cloudSize*maxRay*3) * sizeof(int), cudaMemcpyDeviceToHost);
   cudaMemcpy(outSizes, d_outSizes, cloudSize * sizeof(int), cudaMemcpyDeviceToHost);
-  //cudaMemcpyFromSymbol(&h_error, "d_error", sizeof(bool), 0, cudaMemcpyDeviceToHost);
+  cudaMemcpyFromSymbol(&h_error, "d_error", sizeof(bool), 0, cudaMemcpyDeviceToHost);
   cudaFree(d_outSizes); 
-  cudaFree(d_outPoints);  
-  cudaFree(d_max);  
-  cudaFree(d_min);  
+  cudaFree(d_outPoints);   
   cudaFree(d_fStartVoxel); 
-  cudaFree(d_iStart); 
   cudaFree(d_fStart); 
-  cudaFree(d_iPoints); 
   cudaFree(d_fPoints);
   return !h_error;
 }
