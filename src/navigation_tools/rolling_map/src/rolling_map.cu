@@ -99,7 +99,7 @@ __device__ rolling_map::Coord toIndex(const pcl::PointXYZ& p){
 __device__ void markVoxel(char* voxel_grid, const rolling_map::Coord& c){
   size_t flat_idx = c_width*c_width*c.z + c_width*c.y + c.x;
   char* byte      = voxel_grid + flat_idx/8;
-  char  bit_mask  = flat_idx % 8;
+  char  bit_mask  = 0x01 << (flat_idx % 8);
   *byte |= bit_mask;
 }
 
@@ -109,7 +109,7 @@ __device__ void markVoxel(char* voxel_grid, const rolling_map::Coord& c){
 __device__ void freeVoxel(char* voxel_grid, const rolling_map::Coord& c){
   size_t flat_idx = c_width*c_width*c.z + c_width*c.y + c.x;
   char* byte      = voxel_grid + flat_idx/8;
-  char  bit_mask  = flat_idx % 8;
+  char  bit_mask  = 0x01 << (flat_idx % 8);
   *byte &= ~bit_mask;
 }
 
@@ -122,12 +122,19 @@ __device__ bool offGrid(const rolling_map::Coord& coord){
           coord.z < 0 || coord.z >= c_height );
 }
 
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
+__device__ int minErrorDirection(float error[3]){
+
+}
+
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-__global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, int maxRay, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, int* outPoints, int* outSizes, char* voxel_grid)
+__global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, char* voxel_grid)
 {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -167,9 +174,8 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, int maxRay, const 
     deltaError[dir]       = c_resolution/fabs(direction[dir]);
   }
   
-  int count = 0;
   bool done = false;
-  while(!done && count < maxRay)
+  while(!done)
   {
     // Find direction of min error
     int dim = 2;
@@ -189,32 +195,26 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, int maxRay, const 
 
     // Otherwise we mark the current index as unoccupied
     if(!done)
-    {
-      outPoints[index*maxRay+count]                      = current_index.x;
-      outPoints[index*maxRay+(cloudSize*maxRay)+count]   = current_index.y;
-      outPoints[index*maxRay+(2*cloudSize*maxRay)+count] = current_index.z;
-      // freeVoxel(voxel_grid, current_index);
-    }
-    count = count + 1;
+      freeVoxel(voxel_grid, current_index);
   }
 
-  // if (!offGrid(point_idx)){
-  //   markVoxel(voxel_grid, point_idx);
-  // }
+  if (!offGrid(point_idx)){
+    markVoxel(voxel_grid, point_idx);
+  }
 
-  outSizes[index] = count;
   return;
 }
 
+// DEVICE CODE
 // ================================================================================================
 // ================================================================================================
 // ================================================================================================
+// HOST CODE
 
-bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points, int maxRay, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc, int* outPoints, int* outSizes) 
+bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc) 
 {
   // Device copies of three inputs and output, size of allocated memory, num of threads and blocks
   pcl::PointXYZ *d_pointcloud;
-  int *d_outPoints, *d_outSizes;
 
   // To determine if the kernel ran successfully
   bool h_error = false;
@@ -230,11 +230,7 @@ bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points,
   // Alloc memory for device copies of inputs and outputs
   size_t cloudSize       = points.size();
   size_t pointcloud_size = cloudSize * sizeof(pcl::PointXYZ);
-  size_t outsizes_size   = cloudSize * sizeof(int);
-  size_t outpoints_size  = cloudSize * sizeof(int) * maxRay * 3;
   CUDA_SAFE(cudaMalloc(&d_pointcloud, pointcloud_size));
-  CUDA_SAFE(cudaMalloc(&d_outSizes,   outsizes_size));
-  CUDA_SAFE(cudaMalloc(&d_outPoints,  outpoints_size));
 
   // Copy inputs to device
   CUDA_SAFE(cudaMemcpy(d_pointcloud, points.data(), pointcloud_size, cudaMemcpyHostToDevice));
@@ -243,22 +239,17 @@ bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points,
   if (cuda_ok){
     int thr=THREADS_PER_BLOCK;
     int blk=cloudSize/THREADS_PER_BLOCK+1;
-    crs<<<blk,thr>>>(d_pointcloud, cloudSize, maxRay, sensor_origin, start_voxel_loc, d_outPoints, d_outSizes, d_voxel_grid_);
+    crs<<<blk,thr>>>(d_pointcloud, cloudSize, sensor_origin, start_voxel_loc, d_voxel_grid_);
 
     // Wait for the GPU to finish
     cudaDeviceSynchronize();
     CUDA_SAFE(cudaGetLastError());
   }
 
-  // Copy result back to host and cleanup
-  CUDA_SAFE(cudaMemcpy(outPoints, d_outPoints, outpoints_size, cudaMemcpyDeviceToHost));
-  CUDA_SAFE(cudaMemcpy(outSizes,  d_outSizes,  outsizes_size,  cudaMemcpyDeviceToHost));
-
-  cudaFree(d_outSizes); 
-  cudaFree(d_outPoints);   
   cudaFree(d_pointcloud);
 
-  bool error = cuda_ok;
+  // Determine if the operation was successful, then reset the flag
+  bool all_good = cuda_ok;
   cuda_ok = true;
-  return error;
+  return all_good;
 }

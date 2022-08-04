@@ -115,7 +115,7 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
 
   CUDA_ONLY(
     int num_voxels = width*width*height;
-    size_t mem_size = sizeof(decltype(*d_voxel_grid_))*num_voxels/8;
+    size_t mem_size = sizeof(decltype(*d_voxel_grid_))*num_voxels/8 + 1;
     CUDA_SAFE(cudaMalloc(&d_voxel_grid_, mem_size));
     CUDA_SAFE(cudaMemset(d_voxel_grid_, 0x00, mem_size));
   );
@@ -137,15 +137,11 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   boost::shared_lock<boost::shared_mutex> tlock{translateMutex};  
 
 #ifdef USE_CUDA
-  TIC("GetOccupiedPoints")
   CellMap occupied;
   int cloudSize = scancloud.size();
-  int maxRay = getWidth() + (getHeight()/2.0) + 1; 
   float fStart[3] = {sensorOrigin.x, sensorOrigin.y, sensorOrigin.z};
   int iStart[3] = {0,0,0};
   pcl::PointXYZ start_voxel_loc;
-  int* rayPoints = new int[cloudSize*maxRay*3];
-  int* raySizes = new int[cloudSize];
 
   // Get index of sensor posistion
   if(!toIndex(fStart[0],fStart[1],fStart[2],iStart[0],iStart[1],iStart[2]))
@@ -165,46 +161,15 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
     return; 
   }
 
-  for(int i = 0; i < scancloud.size(); i++)
-  {
-    // mark the point as occupied
-    Coord temp;
-    if(toIndex(scancloud[i].x, scancloud[i].y, scancloud[i].z,temp.x,temp.y,temp.z))
-    {
-      occupied.insert(temp);
-    }
-  }
-  TOC("GetOccupiedPoints")
-
-  // cast all rays on gpu for multithreading
-  //std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+  // Cast all rays on gpu for multithreading
   TIC("CastRays")
-  if(!castRays(scancloud, maxRay, sensorOrigin, start_voxel_loc, rayPoints, raySizes))
+  if(!castRays(scancloud, sensorOrigin, start_voxel_loc))
   {
     ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Error in cuda castRays function.");
     return;
   }
   TOC("CastRays")
 
-  //std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-  //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
-  //std::cout << "insertCloud took " << duration << " microseconds for " << scancloud.size() << " points." << std::endl;
-  //t1 = std::chrono::high_resolution_clock::now(); 
- 
-  // update free cells
-  TIC("SetFree")
-  setFree(cloudSize, maxRay, rayPoints, raySizes);
-  TOC("SetFree")
-
-  // set occupied cells
-  TIC("SetOccupied")
-  setOccupied(occupied);
-  TOC("SetOccupied")
-  //t2 = std::chrono::high_resolution_clock::now();
-  //duration = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
-  //std::cout << "set free/occupied took " << duration << " microseconds." << std::endl;
-  delete raySizes;
-  delete rayPoints;
 #else
   ros::Time start = ros::Time::now();
   //std::cout << "new cloud insert" << std::endl;
@@ -225,13 +190,11 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
     castRay(scancloud[i], sensorOrigin, free);
   }
 
-  //std::cout << "insertCloud took " << (ros::Time::now()-start).toSec() << " seconds." << std::endl;
   start = ros::Time::now();
 
   // update free cells
   setFree(free);
   setOccupied(occupied);
-  //std::cout << "set free/occupied took " << (ros::Time::now()-start).toSec() << " seconds." << std::endl;
 #endif
   ATOC;
 }
@@ -410,10 +373,28 @@ void RollingMap::getMap(std::vector<pcl::PointXYZ> &mapcloud, int &minxi, int &m
   // read lock map mutex
   boost::shared_lock<boost::shared_mutex> mlock{mapMutex};
 
-  for(CellMap::iterator it = map.begin(); it != map.end(); it++)
-  {
-    pcl::PointXYZ point(it->x,it->y,it->z);
-    mapcloud.push_back(point);
+  // for(CellMap::iterator it = map.begin(); it != map.end(); it++)
+  // {
+  //   pcl::PointXYZ point(it->x,it->y,it->z);
+  //   mapcloud.push_back(point);
+  // }
+
+  size_t vg_size = width*width*height/8 + 1;
+  std::vector<uint8_t> voxel_grid(vg_size);
+  cudaDeviceSynchronize();
+  CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_grid_, vg_size*sizeof(decltype(*d_voxel_grid_)), cudaMemcpyDeviceToHost));
+
+  for (int i = 0; i < vg_size; i++){
+    const int idx = 8*i;
+    for (int j = 0; j < 8; j++){
+      if (voxel_grid[i] & (0x01 << j)){
+        mapcloud.emplace_back(
+          ((idx + j) % width),
+          ((idx + j) / width) % width,
+          ((idx + j) / width / width) % height
+        );
+      }
+    }
   }
 }
 

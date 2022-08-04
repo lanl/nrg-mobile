@@ -247,8 +247,7 @@ public:
   int getMinZI();
   int getMaxZI();
 
-  bool castRays(const std::vector<pcl::PointXYZ>& points, int maxRay, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc, 
-              int* outPoints, int* outSizes);
+  bool castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc);
 
   #ifdef TIMEIT
   std::unique_ptr<cpp_timer::Timer> timer;
