@@ -54,7 +54,7 @@
 #define THREADS_PER_BLOCK 256
 
 // Branchless sign function
-#define SIGN(x) ( ((x) > 0) - ((x) < 0) )
+#define SIGN(x) ( ((x) >= 0) - ((x) < 0) )
 
 // Easy square function
 #define SQ(x) ((x)*(x))
@@ -125,8 +125,13 @@ __device__ bool offGrid(const rolling_map::Coord& coord){
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-__device__ int minErrorDirection(float error[3]){
+__device__ int minErrorDirection(const float* error){
+  if (fabs(error[0]) < fabs(error[1]) && fabs(error[0]) < fabs(error[2]))
+    return 0;
+  else if (fabs(error[0]) > fabs(error[1]) && fabs(error[1]) < fabs(error[2]))
+    return 1;
 
+  return 2;
 }
 
 
@@ -157,9 +162,6 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXY
   float accumulatedError[3];   // error accumulated in each direction
   float deltaError[3];         // change in error accumulated for a step in a direction
 
-  // If the occupied point is in the map, we use it as a stopping point
-  bool usePI = not offGrid(point_idx);
-
   // check direction magnitude for divide by zero or same cell
   if(fabs(directionMagnitude) < c_resolution) return;
 
@@ -178,20 +180,14 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXY
   while(!done)
   {
     // Find direction of min error
-    int dim = 2;
-    if(fabs(accumulatedError[0]) < fabs(accumulatedError[1]) && fabs(accumulatedError[0]) < fabs(accumulatedError[2])){
-      dim = 0;
-    }
-    else if(fabs(accumulatedError[1]) < fabs(accumulatedError[0]) && fabs(accumulatedError[1]) < fabs(accumulatedError[2])){
-      dim = 1;
-    }
+    int dim = minErrorDirection(accumulatedError);
 
     // Advance in direction of min error
     ((int*)&current_index)[dim] += stepDirection[dim];
     accumulatedError[dim]       += deltaError[dim]; 
 
     // Determine if we are done
-    done = (usePI && (current_index == point_idx)) || offGrid(current_index);
+    done = (current_index == point_idx) || offGrid(current_index);
 
     // Otherwise we mark the current index as unoccupied
     if(!done)
