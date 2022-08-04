@@ -62,9 +62,12 @@
 #define cuda_ptr
 
 #ifdef USE_CUDA
+#include <cuda_runtime.h>
 #define CUDA_ONLY(x) x
+#define CUDA_BOTH __host__ __device__
 #else
 #define CUDA_ONLY(x)
+#define CUDA_BOTH
 #endif
 
 namespace rolling_map
@@ -76,6 +79,10 @@ struct Coord
   int x;
   int y;
   int z;
+
+  CUDA_BOTH bool operator==(const Coord& c){
+    return c.x == x && c.y == y && c.z == z;
+  }
 };
 
 struct HashCoord
@@ -240,7 +247,7 @@ public:
   int getMinZI();
   int getMaxZI();
 
-  bool castRays(const std::vector<pcl::PointXYZ>& points, int cloudSize, int maxRay, const pcl::PointXYZ& sensor_origin, float* fStartVoxel, 
+  bool castRays(const std::vector<pcl::PointXYZ>& points, int maxRay, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc, 
               int* outPoints, int* outSizes);
 
   #ifdef TIMEIT

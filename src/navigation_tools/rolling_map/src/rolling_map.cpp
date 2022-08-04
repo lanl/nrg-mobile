@@ -115,9 +115,9 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
 
   CUDA_ONLY(
     int num_voxels = width*width*height;
-    size_t mem_size = sizeof(decltype(*d_voxel_grid_))*num_voxels;
+    size_t mem_size = sizeof(decltype(*d_voxel_grid_))*num_voxels/8;
     CUDA_SAFE(cudaMalloc(&d_voxel_grid_, mem_size));
-    CUDA_SAFE(cudaMemset(d_voxel_grid_, 0, mem_size));
+    CUDA_SAFE(cudaMemset(d_voxel_grid_, 0x00, mem_size));
   );
 }
 
@@ -143,7 +143,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   int maxRay = getWidth() + (getHeight()/2.0) + 1; 
   float fStart[3] = {sensorOrigin.x, sensorOrigin.y, sensorOrigin.z};
   int iStart[3] = {0,0,0};
-  float fStartVoxel[3] = {0,0,0};
+  pcl::PointXYZ start_voxel_loc;
   int* rayPoints = new int[cloudSize*maxRay*3];
   int* raySizes = new int[cloudSize];
 
@@ -157,7 +157,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   }
 
   // Get position of start voxel
-  if(!toPosition(iStart[0],iStart[1],iStart[2],fStartVoxel[0],fStartVoxel[1],fStartVoxel[2]))
+  if(!toPosition(iStart[0],iStart[1],iStart[2],start_voxel_loc.x,start_voxel_loc.y,start_voxel_loc.z))
   {
     ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Cannot cast ray from sensor because sensor voxel is not contained in the map bounds. Map bounds: (" 
     << getMinXI() << ", " << getMinYI() << ", " << getMinZI() << ") to (" << getMaxXI() << ", " << getMaxYI() << ", " << getMaxZI() 
@@ -179,7 +179,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   // cast all rays on gpu for multithreading
   //std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
   TIC("CastRays")
-  if(!castRays(scancloud, cloudSize, maxRay, sensorOrigin, fStartVoxel, rayPoints, raySizes))
+  if(!castRays(scancloud, maxRay, sensorOrigin, start_voxel_loc, rayPoints, raySizes))
   {
     ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Error in cuda castRays function.");
     return;
@@ -254,7 +254,6 @@ void RollingMap::setFree(int cloudSize, int maxRay, int* rayPoints, int* raySize
       #pragma omp critical (record_coord)
       {
         removeable_coords.push_back(coord);
-        // map.erase(coord);
       }
     }
   }
