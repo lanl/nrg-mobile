@@ -95,7 +95,7 @@ set(LIB_SOURCES
 if(CUDA_ENABLE)
   set(CUDA_SEPERABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -rdc=true")
-  list(APPEND LIB_SOURCES src/rolling_map.cu)
+  list(APPEND LIB_SOURCES src/cast_rays.cu)
 endif()
 
 add_library(${PROJECT_NAME} ${LIB_SOURCES})
