@@ -45,11 +45,12 @@
 * Author: Alex von Sternberg
 *********************************************************************/
 
-#include "rolling_map.h"
-#include "omp.h"
 #include <algorithm>
-#include "ros/console.h"
 #include <cuda_runtime.h>
+#include "omp.h"
+#include "ros/console.h"
+#include "cuda_safe.cuh"
+#include "rolling_map.h"
 
 #ifdef TIMEIT
 #define TIMER_INSTANCE timer
@@ -62,20 +63,6 @@
 #define TOC(x)
 #define ATIC
 #define ATOC
-#endif
-
-#ifdef USE_CUDA
-
-#define CUDA_SAFE(command)                                                                                                                 \
-if (cuda_ok){                                                                                                                              \
-    cudaError_t err = command;                                                                                                             \
-    cuda_ok = cuda_ok && (err == cudaSuccess);                                                                                             \
-    if (not cuda_ok) {                                                                                                                     \
-        const char* err_s = cudaGetErrorString(err);                                                                                       \
-        ROS_WARN("Cuda Error [%d]\nFailed Command: \"%s\"\nError: %s\nAt line %d of %s", (int)(err), #command, err_s, __LINE__, __FILE__); \
-    }                                                                                                                                      \
-}
-
 #endif
 
 namespace rolling_map
@@ -114,11 +101,11 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
   minYP = y0;
 
   CUDA_ONLY(
-    int num_voxels = width*width*height;
-    size_t mem_size = sizeof(decltype(*d_voxel_grid_))*num_voxels/8 + 1;
-    CUDA_SAFE(cudaMalloc(&d_voxel_grid_, mem_size));
-    CUDA_SAFE(cudaMemset(d_voxel_grid_, 0x00, mem_size));
-  );
+    if(cudaInit()) 
+      ROS_INFO("Voxel grid succesfully allocated on the GPU");
+    else 
+      ROS_ERROR("Voxel grid initialization failed!");
+  )
 }
 
 RollingMap::~RollingMap()
@@ -164,10 +151,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   // Cast all rays on gpu for multithreading
   TIC("CastRays")
   if(!castRays(scancloud, sensorOrigin, start_voxel_loc))
-  {
     ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Error in cuda castRays function.");
-    return;
-  }
   TOC("CastRays")
 
 #else
@@ -360,8 +344,10 @@ void RollingMap::castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sen
 
 void RollingMap::getMap(std::vector<pcl::PointXYZ> &mapcloud, int &minxi, int &minyi, float &minxp, float &minyp)
 {
+  #ifndef USE_CUDA
   // do not allow getMap while we are translating the map
-  boost::shared_lock<boost::shared_mutex> tlock{translateMutex};  
+  boost::shared_lock<boost::shared_mutex> tlock{translateMutex}; 
+  #endif 
 
   mapcloud.clear();
 
@@ -371,33 +357,37 @@ void RollingMap::getMap(std::vector<pcl::PointXYZ> &mapcloud, int &minxi, int &m
   minyp = getMinYP();
 
   // read lock map mutex
+  #ifndef USE_CUDA
   boost::shared_lock<boost::shared_mutex> mlock{mapMutex};
 
-  // for(CellMap::iterator it = map.begin(); it != map.end(); it++)
-  // {
-  //   pcl::PointXYZ point(it->x,it->y,it->z);
-  //   mapcloud.push_back(point);
-  // }
+  for(CellMap::iterator it = map.begin(); it != map.end(); it++)
+  {
+    pcl::PointXYZ point(it->x,it->y,it->z);
+    mapcloud.push_back(point);
+  }
+  #else
 
-  size_t vg_size = width*width*height/8 + 1;
-  std::vector<uint8_t> voxel_grid(vg_size);
-  cudaDeviceSynchronize();
-  CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_grid_, vg_size*sizeof(decltype(*d_voxel_grid_)), cudaMemcpyDeviceToHost));
+  const size_t num_bits  = width*width*height;
+  const size_t num_bytes = num_bits/8 + 1;
+  std::vector<uint8_t> voxel_grid(num_bytes);
+  CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_data_, num_bytes*sizeof(uint8_t), cudaMemcpyDeviceToHost));
 
-  for (int i = 0; i < vg_size; i++){
-    const int idx = 8*i;
-    for (int j = 0; j < 8; j++){
-      if (voxel_grid[i] & (0x01 << j)){
-        mapcloud.emplace_back(
-          ((idx + j) % width),
-          ((idx + j) / width) % width,
-          ((idx + j) / width / width) % height
-        );
-      }
+  for (size_t bit_idx = 0; bit_idx < num_bits; bit_idx++){
+    const size_t  byte_idx = bit_idx/8;
+    const uint8_t bit_mask = 0x01 << (bit_idx % 8);
+
+    if (voxel_grid[byte_idx] & bit_mask){
+      mapcloud.emplace_back(
+        (bit_idx % width),
+        (bit_idx / width) % width,
+        (bit_idx / width / width) % height
+      );
     }
   }
+  #endif
 }
 
+#ifndef USE_CUDA
 void RollingMap::updatePosition(float x, float y)
 {
   // write lock for translate mutex
@@ -427,6 +417,7 @@ void RollingMap::updatePosition(float x, float y)
 
   //std::cout << "translation took " << (ros::Time::now()-start).toSec() << " seconds" << std::endl;
 }
+#endif
 
 void RollingMap::clearX(int shift)
 {
