@@ -54,6 +54,7 @@
 #include <atomic>
 #include "boost/thread/shared_mutex.hpp"
 #include "pcl_ros/point_cloud.h"
+#include "coord.h"
 
 #ifdef TIMEIT
 #include "cpp_timer/Timer.h"
@@ -73,39 +74,8 @@
 namespace rolling_map
 {
 
-//typedef std::atomic<bool>*** BoolArray;
-struct Coord
-{
-  int x;
-  int y;
-  int z;
-
-  CUDA_BOTH bool operator==(const Coord& c){
-    return c.x == x && c.y == y && c.z == z;
-  }
-};
-
-struct HashCoord
-{
-public:
-  size_t operator() (const Coord &coord) const 
-  {
-    return static_cast<size_t>(coord.x)
-    + 1447*static_cast<size_t>(coord.y)
-  + 345637*static_cast<size_t>(coord.z);
-  }
-};
-
-struct CompareCoord
-{
-public:
-  bool operator()(const Coord & c1, const Coord & c2) const
-  {
-    return (c1.x == c2.x) &&
-           (c1.y == c2.y) &&
-           (c1.z == c2.z);
-  }
-};
+// Forward declaration
+class cudaVoxelGrid;
 
 typedef std::unordered_set<Coord, HashCoord, CompareCoord> CellMap;
 
@@ -117,9 +87,9 @@ class RollingMap
 private:
   //BoolArray boolArray;    // Occupancy array whose size if fixed in constructor
   CellMap map;            // Unordered map of tracked occupied cells
-  int width;              // Number of grid cells in x and y directions
-  int height;             // Number of grid cells in z direction
-  float resolution;      // Grid resoltuion (m/cell)
+  const int width;              // Number of grid cells in x and y directions
+  const int height;             // Number of grid cells in z direction
+  const float resolution;      // Grid resoltuion (m/cell)
   float xPosition;       // Current x position of the robot in (m)
   float yPosition;       // Current y position of the robot in (m)
   float x0;
@@ -131,7 +101,8 @@ private:
   int minYI;
   boost::shared_mutex mapMutex;        // Mutex for thread safety when we translate the map
   boost::shared_mutex translateMutex;  // Mutex for thread safety when we translate the map
-  cuda_ptr char* d_voxel_grid_;
+  cuda_ptr cudaVoxelGrid* d_voxel_grid_;
+  uint8_t* d_voxel_data_;
   bool cuda_ok = true;
 
   void clearX(int shift);
@@ -140,6 +111,9 @@ private:
   void index(float px, float py, float pz, int &ix, int &iy, int &iz);
 #ifndef USE_CUDA
   void castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sensorOrigin, CellMap &free);
+#else
+  bool castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc);
+  bool cudaInit();
 #endif
   Coord newCoord(int x, int y, int z);
   float getMinXP();
@@ -246,8 +220,6 @@ public:
   float getMaxZP();
   int getMinZI();
   int getMaxZI();
-
-  bool castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc);
 
   #ifdef TIMEIT
   std::unique_ptr<cpp_timer::Timer> timer;
