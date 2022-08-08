@@ -95,7 +95,7 @@ set(LIB_SOURCES
 if(CUDA_ENABLE)
   set(CUDA_SEPERABLE_COMPILATION ON)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -rdc=true")
-  list(APPEND LIB_SOURCES src/cast_rays.cu)
+  list(APPEND LIB_SOURCES src/cast_rays.cu src/cuda_voxel_grid.cu src/update_position.cu)
 endif()
 
 add_library(${PROJECT_NAME} ${LIB_SOURCES})
