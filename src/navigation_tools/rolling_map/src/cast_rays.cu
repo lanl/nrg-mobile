@@ -50,6 +50,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <rolling_map.h>
+#include "cuda_safe.cuh"
+#include "cuda_voxel_grid.cuh"
 
 #define THREADS_PER_BLOCK 256
 
@@ -61,66 +63,6 @@
 
 // Index a pcl::PointXYZ like a float[4]
 #define INDEX(point, idx) ((float*)(&point))[idx]
-
-// Warpper for CUDA commands
-#define CUDA_SAFE(command)                                                                                                                 \
-if (cuda_ok){                                                                                                                              \
-    cudaError_t err = command;                                                                                                             \
-    cuda_ok = cuda_ok && (err == cudaSuccess);                                                                                             \
-    if (not cuda_ok) {                                                                                                                     \
-        const char* err_s = cudaGetErrorString(err);                                                                                       \
-        ROS_WARN("Cuda Error [%d]\nFailed Command: \"%s\"\nError: %s\nAt line %d of %s", (int)(err), #command, err_s, __LINE__, __FILE__); \
-    }                                                                                                                                      \
-}
-
-// Device constants 
-__constant__ int c_width;
-__constant__ int c_height;
-__constant__ float c_resolution;
-__constant__ float c_min_x;
-__constant__ float c_min_y;
-__constant__ float c_min_z;
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-
-__device__ rolling_map::Coord toIndex(const pcl::PointXYZ& p){
-  rolling_map::Coord idx;
-  const float one_over_res = 1/c_resolution;
-  idx.x = (p.x - c_min_x)*one_over_res;
-  idx.y = (p.y - c_min_y)*one_over_res;
-  idx.z = (p.z - c_min_z)*one_over_res;
-  return idx;
-}
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-
-__device__ void markVoxel(char* voxel_grid, const rolling_map::Coord& c){
-  size_t flat_idx = c_width*c_width*c.z + c_width*c.y + c.x;
-  char* byte      = voxel_grid + flat_idx/8;
-  char  bit_mask  = 0x01 << (flat_idx % 8);
-  *byte |= bit_mask;
-}
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-
-__device__ void freeVoxel(char* voxel_grid, const rolling_map::Coord& c){
-  size_t flat_idx = c_width*c_width*c.z + c_width*c.y + c.x;
-  char* byte      = voxel_grid + flat_idx/8;
-  char  bit_mask  = 0x01 << (flat_idx % 8);
-  *byte &= ~bit_mask;
-}
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-
-__device__ bool offGrid(const rolling_map::Coord& coord){
-  return (coord.x < 0 || coord.x >= c_width ||
-          coord.y < 0 || coord.y >= c_width ||
-          coord.z < 0 || coord.z >= c_height );
-}
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
@@ -135,11 +77,13 @@ __device__ int minErrorDirection(const float* error){
 }
 
 
+// DEVICE FUNCTIONS
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+// KERNEL
 
-__global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, char* voxel_grid)
+__global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, rolling_map::cudaVoxelGrid* voxel_grid)
 {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -150,8 +94,8 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXY
   // Get the information about the current and starting point
   const pcl::PointXYZ& point = pointcloud[index];
 
-  rolling_map::Coord point_idx     = toIndex(point);
-  rolling_map::Coord current_index = toIndex(sensor_origin); 
+  rolling_map::Coord point_idx     = voxel_grid->toIndex(point);
+  rolling_map::Coord current_index = voxel_grid->toIndex(sensor_origin); 
 
   // calculate normal vector in direction of sensor->point
   float direction[3] = {point.x-sensor_origin.x, point.y-sensor_origin.y, point.z-sensor_origin.z};
@@ -163,7 +107,7 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXY
   float deltaError[3];         // change in error accumulated for a step in a direction
 
   // check direction magnitude for divide by zero or same cell
-  if(fabs(directionMagnitude) < c_resolution) return;
+  if(fabs(directionMagnitude) < voxel_grid->resolution) return;
 
   // set up initial values in each direction
   for(int dir = 0; dir < 3; dir++)
@@ -171,9 +115,9 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXY
     direction[dir]    /= directionMagnitude;
     stepDirection[dir] = SIGN(direction[dir]);
 
-    float voxelBorder     = INDEX(start_voxel_loc, dir) + stepDirection[dir]*c_resolution*0.5;
+    float voxelBorder     = INDEX(start_voxel_loc, dir) + stepDirection[dir]*voxel_grid->resolution*0.5;
     accumulatedError[dir] = (voxelBorder - INDEX(sensor_origin, dir)) / direction[dir];
-    deltaError[dir]       = c_resolution/fabs(direction[dir]);
+    deltaError[dir]       = voxel_grid->resolution/fabs(direction[dir]);
   }
   
   bool done = false;
@@ -187,16 +131,17 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXY
     accumulatedError[dim]       += deltaError[dim]; 
 
     // Determine if we are done
-    done = (current_index == point_idx) || offGrid(current_index);
+    done = (current_index == point_idx) || voxel_grid->offGrid(current_index);
 
     // Otherwise we mark the current index as unoccupied
     if(!done)
-      freeVoxel(voxel_grid, current_index);
+      voxel_grid->freeVoxel(current_index);
   }
 
-  if (!offGrid(point_idx)){
-    markVoxel(voxel_grid, point_idx);
+  if (!voxel_grid->offGrid(point_idx)){
+    voxel_grid->markVoxel(point_idx);
   }
+
 
   return;
 }
@@ -212,18 +157,7 @@ bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points,
   // Device copies of three inputs and output, size of allocated memory, num of threads and blocks
   pcl::PointXYZ *d_pointcloud;
 
-  // To determine if the kernel ran successfully
-  bool h_error = false;
-
-  // Copy constant values over to device
-  CUDA_SAFE(cudaMemcpyToSymbol(c_resolution, &this->resolution, sizeof(float)));
-  CUDA_SAFE(cudaMemcpyToSymbol(c_min_x,      &this->x0,         sizeof(float)));
-  CUDA_SAFE(cudaMemcpyToSymbol(c_min_y,      &this->y0,         sizeof(float)));
-  CUDA_SAFE(cudaMemcpyToSymbol(c_min_z,      &this->z0,         sizeof(float)));
-  CUDA_SAFE(cudaMemcpyToSymbol(c_width,      &this->width,      sizeof(int)));
-  CUDA_SAFE(cudaMemcpyToSymbol(c_height,     &this->height,     sizeof(int)));
-
-  // Alloc memory for device copies of inputs and outputs
+  // Alloc memory for the pointcloud on the device
   size_t cloudSize       = points.size();
   size_t pointcloud_size = cloudSize * sizeof(pcl::PointXYZ);
   CUDA_SAFE(cudaMalloc(&d_pointcloud, pointcloud_size));
@@ -239,7 +173,7 @@ bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points,
 
     // Wait for the GPU to finish
     cudaDeviceSynchronize();
-    CUDA_SAFE(cudaGetLastError());
+    CUDA_SAFE(cudaGetLastError() /*cast rays*/);
   }
 
   cudaFree(d_pointcloud);
