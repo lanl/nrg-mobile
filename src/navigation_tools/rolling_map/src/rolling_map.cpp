@@ -52,6 +52,10 @@
 #include "cuda_safe.cuh"
 #include "rolling_map.h"
 
+#ifdef USE_CUDA
+#include "cuda_voxel_grid.cuh"
+#endif
+
 #ifdef TIMEIT
 #define TIMER_INSTANCE timer
 #define TIC(x) timer->tic(x);
@@ -119,7 +123,6 @@ RollingMap::~RollingMap()
 
 void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const pcl::PointXYZ &sensorOrigin)
 {
-  ATIC;
   // do not insert while we are translating the map
   boost::shared_lock<boost::shared_mutex> tlock{translateMutex};  
 
@@ -180,7 +183,6 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   setFree(free);
   setOccupied(occupied);
 #endif
-  ATOC;
 }
 
 #ifdef USE_CUDA
@@ -342,39 +344,26 @@ void RollingMap::castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sen
 }
 #endif
 
-void RollingMap::getMap(std::vector<pcl::PointXYZ> &mapcloud, int &minxi, int &minyi, float &minxp, float &minyp)
+std::vector<pcl::PointXYZ> RollingMap::getMap()
 {
-  #ifndef USE_CUDA
-  // do not allow getMap while we are translating the map
-  boost::shared_lock<boost::shared_mutex> tlock{translateMutex}; 
-  #endif 
-
-  mapcloud.clear();
-
-  minxi = getMinXI();
-  minyi = getMinYI();
-  minxp = getMinXP();
-  minyp = getMinYP();
+  std::vector<pcl::PointXYZ> mapcloud;
 
   // read lock map mutex
-  #ifndef USE_CUDA
   boost::shared_lock<boost::shared_mutex> mlock{mapMutex};
 
-  for(CellMap::iterator it = map.begin(); it != map.end(); it++)
-  {
-    pcl::PointXYZ point(it->x,it->y,it->z);
-    mapcloud.push_back(point);
-  }
-  #else
+  // do not allow getMap while we are translating the map
+  boost::shared_lock<boost::shared_mutex> tlock{translateMutex}; 
 
-  const size_t num_bits  = width*width*height;
-  const size_t num_bytes = num_bits/8 + 1;
-  std::vector<uint8_t> voxel_grid(num_bytes);
-  CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_data_, num_bytes*sizeof(uint8_t), cudaMemcpyDeviceToHost));
+#ifdef USE_CUDA
+
+  const size_t num_bits = width*width*height;
+  const size_t num_ints = num_bits/voxel_block_size + 1;
+  std::vector<uint32_t> voxel_grid(num_ints);
+  CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_data_, num_ints*sizeof(uint32_t), cudaMemcpyDeviceToHost));
 
   for (size_t bit_idx = 0; bit_idx < num_bits; bit_idx++){
-    const size_t  byte_idx = bit_idx/8;
-    const uint8_t bit_mask = 0x01 << (bit_idx % 8);
+    const size_t  byte_idx = bit_idx/voxel_block_size;
+    const voxel_block_t bit_mask = static_cast<voxel_block_t>(1) << (bit_idx % voxel_block_size);
 
     if (voxel_grid[byte_idx] & bit_mask){
       mapcloud.emplace_back(
@@ -384,7 +373,17 @@ void RollingMap::getMap(std::vector<pcl::PointXYZ> &mapcloud, int &minxi, int &m
       );
     }
   }
-  #endif
+
+#else
+
+  for(CellMap::iterator it = map.begin(); it != map.end(); it++)
+  {
+    mapcloud.emplace_back(it->x,it->y,it->z);
+  }
+
+#endif
+
+  return mapcloud;
 }
 
 #ifndef USE_CUDA
@@ -703,9 +702,9 @@ void RollingMap::position(int ix, int iy, int iz, float &px, float &py, float &p
 {
   // index is allowed to be out of bounds.
   // we just want to know the x,y,z value in position space
-  px = x0 + resolution/2.0 + ix*resolution;
-  py = y0 + resolution/2.0 + iy*resolution;
-  pz = z0 + resolution/2.0 + iz*resolution;
+  px = resolution/2.0 + ix*resolution;
+  py = resolution/2.0 + iy*resolution;
+  pz = resolution/2.0 + iz*resolution;
 }
 
 void RollingMap::index(float px, float py, float pz, int &ix, int &iy, int &iz)
