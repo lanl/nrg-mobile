@@ -358,7 +358,7 @@ std::vector<pcl::PointXYZ> RollingMap::getMap()
 
   const size_t num_bits = width*width*height;
   const size_t num_ints = num_bits/voxel_block_size + 1;
-  std::vector<uint32_t> voxel_grid(num_ints);
+  std::vector<voxel_block_t> voxel_grid(num_ints);
   CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_data_, num_ints*sizeof(uint32_t), cudaMemcpyDeviceToHost));
 
   for (size_t bit_idx = 0; bit_idx < num_bits; bit_idx++){
