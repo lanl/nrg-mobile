@@ -69,24 +69,12 @@ __global__ void updateMetaData(rolling_map::cudaVoxelGrid* voxel_grid, float min
 
 __global__ void translateMap(rolling_map::cudaVoxelGrid* voxel_grid, int change, int dir){
 
-	// Index of thread in either the x or y directions
-	size_t long_index = threadIdx.x + blockIdx.x * blockDim.x;
+  // Index of thread in either the x or y directions
+  size_t long_index = threadIdx.x + blockIdx.x * blockDim.x;
 
-	// Index of thread in the z direction
-	size_t z_index = threadIdx.z + blockIdx.z * blockDim.z;
-
-  // if (long_index == 0 && z_index == 0){
-  //   switch (dir){
-  //     case X_CHANGE:
-  //       voxel_grid->min_x += change * voxel_grid->resolution;
-  //       break;
-
-  //     case Y_CHANGE:
-  //       voxel_grid->min_y += change * voxel_grid->resolution;
-  //       break;
-  //   }
-  // }
-
+  // Index of thread in the z direction
+  size_t z_index = threadIdx.z + blockIdx.z * blockDim.z;
+  
   // Do not go outside grid bounds
   if (z_index >= voxel_grid->height || long_index >= voxel_grid->width)
     return;
@@ -103,11 +91,11 @@ __global__ void translateMap(rolling_map::cudaVoxelGrid* voxel_grid, int change,
   // Determine what axis we are iterating across
   decltype(rolling_map::Coord::x)* changing_index;
   decltype(rolling_map::Coord::x)* changing_ref_index;
-	switch(dir){
-		case X_CHANGE:
-			changing_index     = &voxel_index.x;
+  switch(dir){
+    case X_CHANGE:
+      changing_index     = &voxel_index.x;
       changing_ref_index = &reference_index.x;
-			break;
+      break;
     
     case Y_CHANGE:
       changing_index     = &voxel_index.y;
@@ -116,7 +104,7 @@ __global__ void translateMap(rolling_map::cudaVoxelGrid* voxel_grid, int change,
 
     default:
       assert(false); // CUDA version of throwing an error
-	}
+  }
 
   // References for more readable code
   int& curr = *changing_index;
