@@ -102,6 +102,7 @@ private:
   ros::Publisher mapPub;
   ros::Publisher readyPub;
   ros::Publisher pointcloudPub;
+  ros::Publisher outlinePub;
   void publishMessages();
   bool isOccupied(int r, int c, const nav_msgs::OccupancyGrid &g);
 

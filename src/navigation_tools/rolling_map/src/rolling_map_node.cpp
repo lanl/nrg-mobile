@@ -52,14 +52,16 @@
 #include "pcl/filters/filter.h"
 #include "std_msgs/Bool.h"
 #include "tf/transform_datatypes.h"
+#include "geometry_msgs/PolygonStamped.h"
 #include <csignal>
 #include <functional>
+#include <execution>
 
 #ifdef TIMEIT
 #define M_TIC(x)   main_timer->tic(x)
 #define M_TOC(x)   main_timer->toc(x)
-#define CB_TIC(x)  callback_timer->tic(x)
-#define CB_TOC(x)  callback_timer->toc(x)
+#define CB_TIC(x)  map->timer->tic(x)
+#define CB_TOC(x)  map->timer->toc(x)
 #else
 #define TIC
 #define TOC
@@ -77,16 +79,18 @@ namespace rolling_map
 {
 
 RollingMapNode::RollingMapNode() :
-  n("~"),
+  // n("~"),
   spinner(1),
   init(false),
   hasData(false)
 {
+  #ifdef TIMEIT
   main_timer = std::unique_ptr<cpp_timer::Timer> (new cpp_timer::Timer());
   main_timer->allow_interruption = true;
 
   callback_timer = std::unique_ptr<cpp_timer::Timer> (new cpp_timer::Timer());
   callback_timer->allow_interruption = true;
+  #endif
 
   // Get params
   if(!n.getParam("pc_topic", param.pc_topic) ||
@@ -127,6 +131,7 @@ RollingMapNode::RollingMapNode() :
   mapPub = n.advertise<nav_msgs::OccupancyGrid>(param.map_topic,1,true);
   readyPub = n.advertise<std_msgs::Bool>("ready",1,true);
   pointcloudPub = n.advertise<sensor_msgs::PointCloud2>("local_pointcloud", 1, true);
+  outlinePub = n.advertise<geometry_msgs::PolygonStamped>("outline", 1, true);
   resetService = n.advertiseService(param.reset_topic, &RollingMapNode::resetCallback, this);
   clearBoxService = n.advertiseService("clear_box", &RollingMapNode::clearBoxCallback, this);
 
@@ -354,28 +359,34 @@ void RollingMapNode::checkTranslation()
   tempTransform.frame_id_ = param.robot_frame;
   tempTransform.child_frame_id_ = param.world_frame;
   getTransform(tempTransform);
-  float xDiff = robotTransform.getOrigin().getX() - tempTransform.getOrigin().getX();
-  float yDiff = robotTransform.getOrigin().getY() - tempTransform.getOrigin().getY();
+  float xDiff = tempTransform.getOrigin().getX() - robotTransform.getOrigin().getX();
+  float yDiff = tempTransform.getOrigin().getY() - robotTransform.getOrigin().getY();
   float dist = pow(pow(xDiff,2) + pow(yDiff,2), 0.5);
   if(dist > param.translate_distance)
   {
-    ROS_INFO_STREAM("RollingMapNode: Translating map by (" << xDiff << ", " << yDiff << "), from (" << robotTransform.getOrigin().getX() << ", " << robotTransform.getOrigin().getY() << ") to (" << tempTransform.getOrigin().getX() << ", " << tempTransform.getOrigin().getY() << ")");
+    // ROS_INFO_STREAM("RollingMapNode: Translating map by (" << xDiff << ", " << yDiff << "), from (" << robotTransform.getOrigin().getX() << ", " << robotTransform.getOrigin().getY() << ") to (" << tempTransform.getOrigin().getX() << ", " << tempTransform.getOrigin().getY() << ")");
     robotTransform = tempTransform;
+    M_TIC("updatePosition");
     map->updatePosition(robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY());
+    M_TOC("updatePosition");
   }
 }
 
 void RollingMapNode::publishMessages()
 {
+  M_TIC("publishMessages");
+
   // get a copy of the current map
   M_TIC("getMap");
-  std::vector<pcl::PointXYZ> points;
-  int minXI, minYI;
-  float minXP, minYP;
-  float minZP = map->getMinZP();
-  map->getMap(points, minXI, minYI, minXP, minYP);
+  std::vector<pcl::PointXYZ> points = map->getMap();
   M_TOC("getMap");
- 
+
+  const int minXI = map->getMinXI();
+  const int minYI = map->getMinYI();
+  const float minXP = map->getMinXP();
+  const float minZP = map->getMinZP();
+  const float minYP = map->getMinYP();
+
   M_TIC("publishMap");
   if(mapPub.getNumSubscribers() > 0)
   {
@@ -427,6 +438,16 @@ void RollingMapNode::publishMessages()
   }
   M_TOC("publishMap");
 
+  // Convert integer point indices to float coordinates
+  M_TIC("Index2Float");
+  const float res = map->getResolution();
+  std::for_each(std::begin(points), std::end(points), [&](pcl::PointXYZ& p){
+    p.x = minXP + (p.x - minXI)*res;
+    p.y = minYP + (p.y - minYI)*res;
+    p.z = minZP + p.z*res;
+  }); 
+  M_TOC("Index2Float");
+
   M_TIC("publishMarkers");
   if(markerPub.getNumSubscribers() > 0)
   {
@@ -442,37 +463,31 @@ void RollingMapNode::publishMessages()
     occupied.scale.x = map->getResolution();
     occupied.scale.y = map->getResolution();
     occupied.scale.z = map->getResolution();
+    occupied.colors.resize(points.size());
 
     //std::cout << "publishing marker aray of size: " << points.size() << std::endl;
     for(int i = 0; i < points.size(); i++)
     {
       geometry_msgs::Point center;
-      center.x = minXP + (points[i].x - minXI)*map->getResolution();
-      center.y = minYP + (points[i].y - minYI)*map->getResolution();
-      center.z = map->getMinZP() + points[i].z*map->getResolution();
+      center.x = points[i].x;
+      center.y = points[i].y;
+      center.z = points[i].z;
       occupied.points.push_back(center);
-      float heightPercent = points[i].z/map->getHeight();
+      float heightPercent = points[i].z/map->getHeight()/res;
       std_msgs::ColorRGBA color;
       color.r = 0;
       color.g = heightPercent;
       color.b = 1-heightPercent;
       color.a = 1;
-      occupied.colors.push_back(color);
+      occupied.colors[i] = color;
     }
     markerPub.publish(occupied);
   }
   M_TOC("publishMarkers");
-  
-  // Convert the points vector from indices to coordinates
-  M_TIC("publishPointcloud");
-  const float res = map->getResolution();
-  std::for_each(points.begin(), points.end(), [&](pcl::PointXYZ& p){
-    p.x = minXP + (p.x - minXI)*res;
-    p.y = minYP + (p.y - minYI)*res;
-    p.z = minZP + p.z*res;
-  }); 
+
 
   // Copy the data to the pointcloud message
+  M_TIC("publishPointcloud");
   output_cloud_.header.stamp = ros::Time::now();
   output_cloud_.header.seq++;
   output_cloud_.width = points.size();
@@ -486,6 +501,23 @@ void RollingMapNode::publishMessages()
   std_msgs::Bool msg;
   msg.data = hasData;
   readyPub.publish(msg);
+
+  // Outline pub
+  geometry_msgs::PolygonStamped outline;
+  outline.header.stamp = ros::Time::now();
+  outline.header.frame_id = param.world_frame;
+  outline.polygon.points.resize(4);
+  outline.polygon.points[0].x = minXP;
+  outline.polygon.points[0].y = minYP;
+  outline.polygon.points[1].x = minXP + map->getWidth()*map->getResolution();
+  outline.polygon.points[1].y = minYP;
+  outline.polygon.points[2].x = minXP + map->getWidth()*map->getResolution();
+  outline.polygon.points[2].y = minYP + map->getWidth()*map->getResolution();
+  outline.polygon.points[3].x = minXP;
+  outline.polygon.points[3].y = minYP + map->getWidth()*map->getResolution();
+  outlinePub.publish(outline);
+
+  M_TOC("publishMessages");
 }
 
 bool RollingMapNode::isOccupied(int r, int c, const nav_msgs::OccupancyGrid &g)
