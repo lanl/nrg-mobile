@@ -6,13 +6,14 @@
 
 namespace rolling_map{
 
+typedef uint32_t voxel_block_t;
+#define voxel_block_size (sizeof(voxel_block_t)*8)
+
 class cudaVoxelGrid{
 	public:
 		__device__ cudaVoxelGrid(int width, int height, float res);
 
 		__device__ ~cudaVoxelGrid();
-
-		// __device__  operator=(const cudaVoxelGrid& cvg);
 
 		__device__ rolling_map::Coord toIndex(const pcl::PointXYZ& p);
 
@@ -24,7 +25,7 @@ class cudaVoxelGrid{
 
 		__device__ bool offGrid(const rolling_map::Coord& c) const;
 
-		uint8_t* voxels;
+		voxel_block_t* voxels;
 
 		const float resolution;
 		const int width;
