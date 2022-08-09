@@ -89,8 +89,8 @@ __global__ void translateMap(rolling_map::cudaVoxelGrid* voxel_grid, int change,
   int diff  = SIGN(end - start);
 
   // Determine what axis we are iterating across
-  decltype(rolling_map::Coord::x)* changing_index;
-  decltype(rolling_map::Coord::x)* changing_ref_index;
+  int* changing_index;
+  int* changing_ref_index;
   switch(dir){
     case X_CHANGE:
       changing_index     = &voxel_index.x;
