@@ -64,12 +64,8 @@
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
-#define CUDA_ONLY(x) x
-#define CUDA_BOTH __host__ __device__
-#else
-#define CUDA_ONLY(x)
-#define CUDA_BOTH
 #endif
+#include "cuda_safe.cuh"
 
 namespace rolling_map
 {
@@ -102,7 +98,7 @@ private:
   boost::shared_mutex mapMutex;        // Mutex for thread safety when we translate the map
   boost::shared_mutex translateMutex;  // Mutex for thread safety when we translate the map
   cuda_ptr cudaVoxelGrid* d_voxel_grid_;
-  uint8_t* d_voxel_data_;
+  uint32_t* d_voxel_data_;
   bool cuda_ok = true;
 
   void clearX(int shift);
@@ -116,16 +112,6 @@ private:
   bool cudaInit();
 #endif
   Coord newCoord(int x, int y, int z);
-  float getMinXP();
-  float getMaxXP();
-  float getMinYP();
-  float getMaxYP();
-  int getMinXI();
-  int getMaxXI();
-  int getMinYI();
-  int getMaxYI();
-  float getXPosition();
-  float getYPosition();
 #ifndef USE_CUDA
   void setFree(CellMap &free);
 #else
@@ -208,7 +194,7 @@ public:
   //  Ray casting and point cloud insertion
   /////////////////////////////
   void insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const pcl::PointXYZ &sensorOrigin);
-  void getMap(std::vector<pcl::PointXYZ> &mapcloud, int &minxi, int &minyi, float &minxp, float &minyp);
+  std::vector<pcl::PointXYZ> getMap();
 
   /////////////////////////////
   // Getter functions
@@ -218,8 +204,18 @@ public:
   float getResolution();
   float getMinZP();
   float getMaxZP();
+  float getMinXP();
+  float getMaxXP();
+  float getMinYP();
+  float getMaxYP();
+  int getMinXI();
+  int getMaxXI();
+  int getMinYI();
+  int getMaxYI();
   int getMinZI();
   int getMaxZI();
+  float getXPosition();
+  float getYPosition();
 
   #ifdef TIMEIT
   std::unique_ptr<cpp_timer::Timer> timer;
