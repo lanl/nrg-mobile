@@ -63,8 +63,10 @@
 #define CB_TIC(x)  map->timer->tic(x)
 #define CB_TOC(x)  map->timer->toc(x)
 #else
-#define TIC
-#define TOC
+#define M_TIC(x)
+#define M_TOC(x)
+#define CB_TIC(x)
+#define CB_TOC(x)
 #endif
 
 static std::unique_ptr<rolling_map::RollingMapNode> node;
