@@ -70,8 +70,8 @@ __device__ cudaVoxelGrid::~cudaVoxelGrid() {
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-// 
-__device__ rolling_map::Coord cudaVoxelGrid::toIndex(const pcl::PointXYZ& p){
+ 
+__device__ rolling_map::Coord cudaVoxelGrid::toIndex(const pcl::PointXYZ& p) const{
   rolling_map::Coord idx;
   const float one_over_res = 1/resolution;
   idx.x = (p.x - min_x)*one_over_res;
@@ -83,31 +83,36 @@ __device__ rolling_map::Coord cudaVoxelGrid::toIndex(const pcl::PointXYZ& p){
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
+__device__ voxelIndex cudaVoxelGrid::getVoxelMask(const Coord& c) const{
+  voxelIndex idx;
+  size_t bit_idx = width*width*c.z + width*c.y + c.x;
+  idx.mem_ptr    = voxels + bit_idx/voxel_block_size;
+  idx.bit_mask   = static_cast<voxel_block_t>(1) << (bit_idx % voxel_block_size);
+  return idx;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
 __device__ void cudaVoxelGrid::markVoxel(const Coord& c){
-  size_t         flat_idx  = width*width*c.z + width*c.y + c.x;
-  voxel_block_t* mem_block = voxels + flat_idx/voxel_block_size;
-  voxel_block_t  bit_mask  = static_cast<voxel_block_t>(1) << (flat_idx % voxel_block_size);
-  atomicOr(mem_block, bit_mask);
+  const voxelIndex voxel_idx = getVoxelMask(c);
+  atomicOr(voxel_idx.mem_ptr, voxel_idx.bit_mask);
 }
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
 __device__ void cudaVoxelGrid::freeVoxel(const Coord& c){
-  size_t         flat_idx  = width*width*c.z + width*c.y + c.x;
-  voxel_block_t* mem_block = voxels + flat_idx/voxel_block_size;
-  voxel_block_t  bit_mask  = static_cast<voxel_block_t>(1) << (flat_idx % voxel_block_size);
-  atomicAnd(mem_block, ~bit_mask);
+  const voxelIndex voxel_idx = getVoxelMask(c);
+  atomicAnd(voxel_idx.mem_ptr, ~voxel_idx.bit_mask);
 }
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
 __device__ bool cudaVoxelGrid::getVoxel(const Coord& c) const {
-  const size_t          flat_idx = width*width*c.z + width*c.y + c.x;
-  const voxel_block_t* mem_block = voxels + flat_idx/voxel_block_size;
-  const voxel_block_t   bit_mask = static_cast<voxel_block_t>(1) << (flat_idx % voxel_block_size);
-  return (*mem_block & bit_mask);
+  const voxelIndex voxel_idx = getVoxelMask(c);
+  return (*voxel_idx.mem_ptr & voxel_idx.bit_mask);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -136,18 +141,20 @@ __global__ void initVoxelGrid(rolling_map::cudaVoxelGrid** map_ptr, int width, i
 
 bool rolling_map::RollingMap::cudaInit(){
 
-    // Initialize the voxel grid
+    // Allocate space for the voxel grid class, as well as the data grid itself
     cudaVoxelGrid** new_grid;
     CUDA_SAFE(cudaMalloc(&new_grid, sizeof(cudaVoxelGrid**)));
-    // Make sure that voxel grid data space is divisible by 32 for CUDA atomic operations
     CUDA_SAFE(cudaMalloc(&d_voxel_data_, (width*width*height/voxel_block_size + 1)*sizeof(voxel_block_t)));	
-    initVoxelGrid<<<1,1>>>(new_grid, width, height, resolution, minXP, minYP, z0, d_voxel_data_);
+
+    // Initialize the grid with the map geometry
+    initVoxelGrid<<<1,1>>>(new_grid, width, height, resolution, x0, y0, z0, d_voxel_data_);
     cudaDeviceSynchronize();
     CUDA_SAFE(cudaGetLastError(); /* initVoxelGrid */);
 
     // Copy the grid pointer to the host
     CUDA_SAFE(cudaMemcpy(&d_voxel_grid_, new_grid, sizeof(cudaVoxelGrid*), cudaMemcpyDeviceToHost));
 
+    // Return the success of the operation
     bool output = cuda_ok;
     cuda_ok = true;
     return output;

@@ -83,12 +83,12 @@ __device__ int minErrorDirection(const float* error){
 // ------------------------------------------------------------------------------------------------
 // KERNEL
 
-__global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, rolling_map::cudaVoxelGrid* voxel_grid)
+__global__ void crs(pcl::PointXYZ* pointcloud, size_t num_points, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, rolling_map::cudaVoxelGrid* voxel_grid)
 {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
+  size_t index = threadIdx.x + blockIdx.x * blockDim.x;
 
   // if there are extra threads, don't run them
-  if(index >= cloudSize)
+  if(index >= num_points)
     return;
 
   // Get the information about the current and starting point
@@ -156,8 +156,8 @@ bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points,
   pcl::PointXYZ *d_pointcloud;
 
   // Alloc memory for the pointcloud on the device
-  size_t cloudSize       = points.size();
-  size_t pointcloud_size = cloudSize * sizeof(pcl::PointXYZ);
+  size_t num_points      = points.size();
+  size_t pointcloud_size = num_points * sizeof(pcl::PointXYZ);
   CUDA_SAFE(cudaMalloc(&d_pointcloud, pointcloud_size));
 
   // Copy inputs to device
@@ -166,8 +166,8 @@ bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points,
   // Calculates blocks and threads and launch average3 kernel on GPU
   if (cuda_ok){
     int thr=THREADS_PER_BLOCK;
-    int blk=cloudSize/THREADS_PER_BLOCK+1;
-    crs<<<blk,thr>>>(d_pointcloud, cloudSize, sensor_origin, start_voxel_loc, d_voxel_grid_);
+    int blk=num_points/THREADS_PER_BLOCK+1;
+    crs<<<blk,thr>>>(d_pointcloud, num_points, sensor_origin, start_voxel_loc, d_voxel_grid_);
 
     // Wait for the GPU to finish
     cudaDeviceSynchronize();

@@ -172,12 +172,10 @@ void rolling_map::RollingMap::updatePosition(float x, float y){
   
   xPosition = x;
   yPosition = y;
-  minXP += xChange*resolution;
-  minYP += yChange*resolution;
-  x0 = minXP;
-  y0 = minYP;
+  x0 += xChange*resolution;
+  y0 += yChange*resolution;
 
-  updateMetaData<<<1,1>>>(d_voxel_grid_, minXP, minYP);
+  updateMetaData<<<1,1>>>(d_voxel_grid_, x0, y0);
   cudaDeviceSynchronize();
   CUDA_SAFE(cudaGetLastError(); /* updateMetaData */);
 }

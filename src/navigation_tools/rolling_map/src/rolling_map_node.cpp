@@ -222,7 +222,7 @@ bool RollingMapNode::getTransform(tf::StampedTransform &transform, bool init)
 void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg)
 {
   CB_TIC("pcCallback");
-  //ROS_INFO_STREAM_THROTTLE(1.0, "RollingMapNode: pcCallback receiving pointcloud on " << param.pc_topic << ", frame is " << msg->header.frame_id);
+
   // Remove NaN values, if any.
   CB_TIC("RemoveNaN");
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -230,7 +230,7 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
   pcl::removeNaNFromPointCloud(*msg, *cloud, indices);
   CB_TOC("RemoveNaN");
 
-  // transform point cloud to world frame
+  // Transform point cloud to world frame
   CB_TIC("TransformPointcloud");
   tf::StampedTransform sensorTransform;
   sensorTransform.frame_id_ = cloud->header.frame_id;
@@ -244,7 +244,7 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
   pcl_ros::transformPointCloud(*cloud,*cloud,sensorTransform);
   CB_TOC("TransformPointcloud");
 
-  // pull out vector of points and insert cloud
+  // Pull out vector of points and insert cloud
   CB_TIC("insertCloud");
   std::vector<pcl::PointXYZ> points(cloud->begin(),cloud->end());
   pcl::PointXYZ origin(sensorTransform.getOrigin().x(),sensorTransform.getOrigin().y(),sensorTransform.getOrigin().z());
@@ -262,20 +262,20 @@ void RollingMapNode::createAdjustmentVector(const tf::StampedTransform &sensorTr
   {
     for(int i = 0; i < 360; i++)
     {
-      // make sensor circle and transform to map frame
+      // Make sensor circle and transform to map frame
       tf::Vector3 v;
       v.setX(param.sensing_radius * cos(i*M_PI/180.0));
       v.setY(param.sensing_radius * sin(i*M_PI/180.0));
       v.setZ(0.0);
       v = sensorTransform(v);
 
-      // subtract off translation from map to sensor
+      // Subtract off translation from map to sensor
       pcl::PointXYZ p;
       p.x = v.x() - sensorTransform.getOrigin().x();
       p.y = v.y() - sensorTransform.getOrigin().y();
       p.z = v.z() - sensorTransform.getOrigin().z();
 
-      // push back to points vector
+      // Push back to points vector
       points.push_back(p);
     }
   }
@@ -297,7 +297,7 @@ bool RollingMapNode::clearBoxCallback(rolling_map::Box::Request &req, rolling_ma
     return false;
   }
  
-  // add two points to make bounds of a rectangle 
+  // Add two points to make bounds of a rectangle 
   // (note that we are assuming the z axis it perpendicular to the ground.
   //  this is usually the convention)
   geometry_msgs::PointStamped p3 = req.p1;
@@ -305,7 +305,7 @@ bool RollingMapNode::clearBoxCallback(rolling_map::Box::Request &req, rolling_ma
   geometry_msgs::PointStamped p4 = req.p1;
   p4.point.y = req.p2.point.y;
 
-  // transform points to map frame
+  // Transform points to map frame
   tf::Stamped<tf::Point> point1, point2, point3, point4;
   tf::pointStampedMsgToTF(req.p1,point1);
   tf::pointStampedMsgToTF(req.p2,point2);
@@ -325,7 +325,7 @@ bool RollingMapNode::clearBoxCallback(rolling_map::Box::Request &req, rolling_ma
   point3.setData(t*point3);
   point4.setData(t*point4);
 
-  // put points in array that is ordered consecutively
+  // Put points in array that is ordered consecutively
   std::vector<std::vector<float>> polygon;
   std::vector<float> point;
   point.resize(2);
@@ -342,7 +342,7 @@ bool RollingMapNode::clearBoxCallback(rolling_map::Box::Request &req, rolling_ma
   point[1] = point4.getY();
   polygon.push_back(point);
     
-  // clear box bounded by the two points
+  // Clear box bounded by the two points
   if(!map->clearPositionBox(polygon, req.p1.point.z, req.p2.point.z))
   {
     ROS_ERROR("RollingMapNode: Rolling map failed to clear position box.");
@@ -364,7 +364,6 @@ void RollingMapNode::checkTranslation()
   float dist = pow(pow(xDiff,2) + pow(yDiff,2), 0.5);
   if(dist > param.translate_distance)
   {
-    // ROS_INFO_STREAM("RollingMapNode: Translating map by (" << xDiff << ", " << yDiff << "), from (" << robotTransform.getOrigin().getX() << ", " << robotTransform.getOrigin().getY() << ") to (" << tempTransform.getOrigin().getX() << ", " << tempTransform.getOrigin().getY() << ")");
     robotTransform = tempTransform;
     M_TIC("updatePosition");
     map->updatePosition(robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY());
@@ -376,7 +375,7 @@ void RollingMapNode::publishMessages()
 {
   M_TIC("publishMessages");
 
-  // get a copy of the current map
+  // Get a copy of the current map
   M_TIC("getMap");
   std::vector<pcl::PointXYZ> points = map->getMap();
   M_TOC("getMap");
@@ -390,7 +389,7 @@ void RollingMapNode::publishMessages()
   M_TIC("publishMap");
   if(mapPub.getNumSubscribers() > 0)
   {
-    // set up grid info
+    // Set up grid info
     nav_msgs::OccupancyGrid grid;
     grid.header.stamp = ros::Time::now();
     grid.header.frame_id = param.world_frame;
@@ -406,7 +405,7 @@ void RollingMapNode::publishMessages()
     grid.info.origin.orientation.w = 1.0;
     grid.data.resize(map->getWidth()*map->getWidth(),0);
 
-    // sum z columns to build 2d map
+    // Sum z columns to build 2d map
     for(int i = 0; i < points.size(); i++)
     {
       int col = points[i].x - minXI;
@@ -422,7 +421,7 @@ void RollingMapNode::publishMessages()
       }
     }
 
-    // cycle through map and get rid of lonely cells
+    // Cycle through map and get rid of lonely cells
     for(int i = 0; i < grid.data.size(); i++)
     {
       int c = i%grid.info.width;
@@ -451,7 +450,7 @@ void RollingMapNode::publishMessages()
   M_TIC("publishMarkers");
   if(markerPub.getNumSubscribers() > 0)
   {
-    // add points to marker array
+    // Add points to marker array
     visualization_msgs::Marker occupied;
     occupied.header.frame_id = param.world_frame;
     occupied.header.stamp = ros::Time::now();
@@ -465,7 +464,6 @@ void RollingMapNode::publishMessages()
     occupied.scale.z = map->getResolution();
     occupied.colors.resize(points.size());
 
-    //std::cout << "publishing marker aray of size: " << points.size() << std::endl;
     for(int i = 0; i < points.size(); i++)
     {
       geometry_msgs::Point center;

@@ -88,11 +88,9 @@ private:
   const float resolution;      // Grid resoltuion (m/cell)
   float xPosition;       // Current x position of the robot in (m)
   float yPosition;       // Current y position of the robot in (m)
-  float x0;
-  float y0;
+  float x0;              // x position of lower left hand corner of grid
+  float y0;              // y position of lower left hand corner of grid
   float z0;              // Height of z[0] cells in array (m)
-  float minXP;            // x position of lower left hand corner of grid
-  float minYP;            // y position of lower left hand corner of grid
   int minXI;
   int minYI;
   boost::shared_mutex mapMutex;        // Mutex for thread safety when we translate the map
