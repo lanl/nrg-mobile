@@ -81,7 +81,6 @@ typedef std::unordered_set<Coord, HashCoord, CompareCoord> CellMap;
 class RollingMap 
 {
 private:
-  //BoolArray boolArray;    // Occupancy array whose size if fixed in constructor
   CellMap map;            // Unordered map of tracked occupied cells
   const int width;              // Number of grid cells in x and y directions
   const int height;             // Number of grid cells in z direction
@@ -103,18 +102,16 @@ private:
   void clearY(int shift);
   void position(int ix, int iy, int iz, float &px, float &py, float &pz);
   void index(float px, float py, float pz, int &ix, int &iy, int &iz);
-#ifndef USE_CUDA
-  void castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sensorOrigin, CellMap &free);
-#else
+#ifdef USE_CUDA
   bool castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc);
   bool cudaInit();
-#endif
-  Coord newCoord(int x, int y, int z);
-#ifndef USE_CUDA
-  void setFree(CellMap &free);
-#else
   void setFree(int cloudSize, int maxRay, int* rayPoints, int* raySizes);
+#else
+  void castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sensorOrigin, CellMap &free);
+  Coord newCoord(int x, int y, int z);
+  void setFree(CellMap &free);
 #endif
+
   void setOccupied(CellMap &free);
 
   /*

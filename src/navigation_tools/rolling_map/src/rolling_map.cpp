@@ -46,13 +46,13 @@
 *********************************************************************/
 
 #include <algorithm>
-#include <cuda_runtime.h>
 #include "omp.h"
 #include "ros/console.h"
 #include "cuda_safe.cuh"
 #include "rolling_map.h"
 
 #ifdef USE_CUDA
+#include <cuda_runtime.h>
 #include "cuda_voxel_grid.cuh"
 #endif
 
