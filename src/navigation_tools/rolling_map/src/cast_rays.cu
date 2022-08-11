@@ -142,8 +142,6 @@ __global__ void crs(pcl::PointXYZ* pointcloud, int cloudSize, const pcl::PointXY
     voxel_grid->markVoxel(point_idx);
   }
 
-
-  return;
 }
 
 // DEVICE CODE
