@@ -702,9 +702,9 @@ void RollingMap::position(int ix, int iy, int iz, float &px, float &py, float &p
 {
   // index is allowed to be out of bounds.
   // we just want to know the x,y,z value in position space
-  px = resolution/2.0 + ix*resolution;
-  py = resolution/2.0 + iy*resolution;
-  pz = resolution/2.0 + iz*resolution;
+  px = x0 + resolution/2.0 + ix*resolution;
+  py = y0 + resolution/2.0 + iy*resolution;
+  pz = z0 + resolution/2.0 + iz*resolution;
 }
 
 void RollingMap::index(float px, float py, float pz, int &ix, int &iy, int &iz)
