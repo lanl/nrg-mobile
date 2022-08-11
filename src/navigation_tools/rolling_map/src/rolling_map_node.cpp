@@ -79,7 +79,7 @@ namespace rolling_map
 {
 
 RollingMapNode::RollingMapNode() :
-  // n("~"),
+  n("~"),
   spinner(1),
   init(false),
   hasData(false)
