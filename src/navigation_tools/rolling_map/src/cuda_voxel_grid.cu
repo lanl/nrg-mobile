@@ -141,13 +141,15 @@ __global__ void initVoxelGrid(rolling_map::cudaVoxelGrid** map_ptr, int width, i
 
 bool rolling_map::RollingMap::cudaInit(){
 
+    voxel_grid_size_bytes_ = (width_*width_*height_/voxel_block_size + 1)*sizeof(voxel_block_t);
+
     // Allocate space for the voxel grid class, as well as the data grid itself
     cudaVoxelGrid** new_grid;
     CUDA_SAFE(cudaMalloc(&new_grid, sizeof(cudaVoxelGrid**)));
-    CUDA_SAFE(cudaMalloc(&d_voxel_data_, (width*width*height/voxel_block_size + 1)*sizeof(voxel_block_t)));	
+    CUDA_SAFE(cudaMalloc(&d_voxel_data_, voxel_grid_size_bytes_));	
 
     // Initialize the grid with the map geometry
-    initVoxelGrid<<<1,1>>>(new_grid, width, height, resolution, x0, y0, z0, d_voxel_data_);
+    initVoxelGrid<<<1,1>>>(new_grid, width_, height_, resolution_, x0_, y0_, z0_, d_voxel_data_);
     cudaDeviceSynchronize();
     CUDA_SAFE(cudaGetLastError(); /* initVoxelGrid */);
 

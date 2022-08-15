@@ -382,8 +382,6 @@ void RollingMapNode::publishMessages()
   std::vector<pcl::PointXYZ> points = map->getMap();
   M_TOC("getMap");
 
-  const int minXI = map->getMinXI();
-  const int minYI = map->getMinYI();
   const float minXP = map->getMinXP();
   const float minZP = map->getMinZP();
   const float minYP = map->getMinYP();
@@ -410,9 +408,9 @@ void RollingMapNode::publishMessages()
     // Sum z columns to build 2d map
     for(int i = 0; i < points.size(); i++)
     {
-      int col = points[i].x - minXI;
-      int row = points[i].y - minYI;
-      int z = points[i].z - map->getMinZI();
+      int col = points[i].x;
+      int row = points[i].y;
+      int z = points[i].z;
       if(z <= map->getMaxZI() - param.ignore_top_rows)
       {
         int index = row*grid.info.width + col; 
@@ -443,8 +441,8 @@ void RollingMapNode::publishMessages()
   M_TIC("Index2Float");
   const float res = map->getResolution();
   std::for_each(std::begin(points), std::end(points), [&](pcl::PointXYZ& p){
-    p.x = minXP + (p.x - minXI)*res;
-    p.y = minYP + (p.y - minYI)*res;
+    p.x = minXP + p.x*res;
+    p.y = minYP + p.y*res;
     p.z = minZP + p.z*res;
   }); 
   M_TOC("Index2Float");

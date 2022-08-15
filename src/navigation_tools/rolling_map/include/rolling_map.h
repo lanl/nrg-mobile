@@ -52,6 +52,8 @@
 #include <string>
 #include <vector>
 #include <atomic>
+#include <mutex>
+#include <shared_mutex>
 #include "boost/thread/shared_mutex.hpp"
 #include "pcl_ros/point_cloud.h"
 #include "coord.h"
@@ -73,7 +75,8 @@ namespace rolling_map
 // Forward declaration
 class cudaVoxelGrid;
 
-typedef std::unordered_set<Coord, HashCoord, CompareCoord> CellMap;
+// Typedef for the set of occupied points in the map
+typedef std::unordered_set<Coord> CellMap;
 
 /**
 * Rolling Array construct
@@ -81,84 +84,102 @@ typedef std::unordered_set<Coord, HashCoord, CompareCoord> CellMap;
 class RollingMap 
 {
 private:
-  CellMap map;            // Unordered map of tracked occupied cells
-  const int width;              // Number of grid cells in x and y directions
-  const int height;             // Number of grid cells in z direction
-  const float resolution;      // Grid resoltuion (m/cell)
-  float xPosition;       // Current x position of the robot in (m)
-  float yPosition;       // Current y position of the robot in (m)
-  float x0;              // x position of lower left hand corner of grid
-  float y0;              // y position of lower left hand corner of grid
-  float z0;              // Height of z[0] cells in array (m)
-  int minXI;
-  int minYI;
-  boost::shared_mutex mapMutex;        // Mutex for thread safety when we translate the map
-  boost::shared_mutex translateMutex;  // Mutex for thread safety when we translate the map
-  cuda_ptr cudaVoxelGrid* d_voxel_grid_;
-  uint32_t* d_voxel_data_;
+  CellMap map_;                   // Unordered map of tracked occupied cells
+  const int width_;               // Number of grid cells in x and y directions
+  const int height_;              // Number of grid cells in z direction
+  const float resolution_;        // Grid resoltuion (m/cell)
+  float xPosition_;               // Current x position of the robot in (m)
+  float yPosition_;               // Current y position of the robot in (m)
+  float x0_;                      // x position of lower left hand corner of grid
+  float y0_;                      // y position of lower left hand corner of grid
+  float z0_;                      // Height of z[0] cells in array (m)
+
+  std::shared_timed_mutex map_mutex_;        // Mutex for thread safety when we translate the map
+
+  // CUDA variables
+  cuda_ptr cudaVoxelGrid* d_voxel_grid_;  // Address of the cudaVoxelGrid object on the GPU
+  uint32_t* d_voxel_data_;                // Address of the voxel grid data structure
+  size_t voxel_grid_size_bytes_ = 0;
   bool cuda_ok = true;
 
-  void clearX(int shift);
-  void clearY(int shift);
+  /*
+    Get the position of the index coordinate (ix,iy,iz)
+    Not thread safe
+  */
   void position(int ix, int iy, int iz, float &px, float &py, float &pz);
+
+  /*
+    Get the index of the position coordinate (px,py,pz)
+    Not thread safe
+  */
   void index(float px, float py, float pz, int &ix, int &iy, int &iz);
+
+  /////////////////////////////
+  // CUDA-Only functions
+  /////////////////////////////
 #ifdef USE_CUDA
-  bool castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc);
+
+  /*
+    Initialize the voxel grid on the device and store its address
+    Returns false if there are any errors in CUDA API calls
+    Not thread safe
+  */
   bool cudaInit();
-  void setFree(int cloudSize, int maxRay, int* rayPoints, int* raySizes);
+
+  /*
+    Launch a kernel to cast rays for each point in the points vector
+    Returns false if there are any errors in CUDA API calls
+    Not thread safe
+  */
+  bool castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc);
+
+  /////////////////////////////
+  // Non CUDA-Only functions
+  /////////////////////////////
 #else
+
+  /*
+    Remove any points which are within shift indices of the map x boundary
+    Not thread safe
+  */
+  void clearX(int shift);
+
+  /*
+    Remove any points which are within shift indices of the map y boundary
+    Not thread safe
+  */
+  void clearY(int shift);
+
+  /*
+    Cast a ray from the sensor origin to an occupied point, and store all unoccupied points in "free"
+    Not thread safe
+  */
   void castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sensorOrigin, CellMap &free);
-  Coord newCoord(int x, int y, int z);
+
+  /*
+    For all points in "free", mark as unoccupied in the map
+    Not thread safe
+  */
   void setFree(CellMap &free);
+
+  /*
+    For all points in "occ", mark as occupied in the map
+    Not thread safe
+  */
+  void setOccupied(CellMap &occ);
+
 #endif
-
-  void setOccupied(CellMap &free);
-
-  /*
-    Get occupancy value at (x,y,z) coord (meters)
-  */
-  bool atPosition(float x, float y, float z, bool &value);
-
-  /*
-    Get occupancy value at (x,y,z) index
-  */
-  bool atIndex(int x, int y, int z, bool &value);
-
-  /*
-    Set occupancy value at (x,y,z) coord (meters)
-  */
-  bool setPosition(float x, float y, float z, bool value);
-  
-  /*
-    Set occupancy value at (x,y,z) index
-  */
-  bool setIndex(int x, int y, int z, bool value);
-
-  /* 
-    Check if (x,y,z) indices are in the bounds of the array
-  */
-  bool checkIndex(int x, int y, int z);
-
-  /*
-    Check if (x,y,z) position is in bounds of array
-  */
-  bool checkPosition(float x, float y, float z);
 
   /*
     Clear the area contained within the given x-y index polygon and z1-z2 coordinate heights
+    Not thread safe
   */
   bool clearIndexBox(std::vector<std::vector<int>> polygon, int z1, int z2);
+
+  /*
+    Determine if a point is inside the polygon descriped by the vertices in "poly"
+  */
   bool pointInPoly(std::vector<int> point, std::vector<std::vector<int>> poly);
-
-  /*
-    Get the position of the cell at the supplied index
-  */
-  bool toPosition(int ix, int iy, int iz, float &px, float &py, float &pz);
-
-  /*
-    Get the index of the cell that contains the supplied position
-  */
-  bool toIndex(float px, float py, float pz, int &ix, int &iy, int &iz);
 
 public:
   RollingMap(int w, int h, float res, float x, float y, float zmin);
@@ -169,31 +190,96 @@ public:
   /////////////////////////////
   /*
     Set the current position of the robot
+    Thread safe
   */
   void updatePosition(float x, float y);
 
-  /////////////////////////////
-  // Array access functions
-  /////////////////////////////
+  /*
+    Set occupancy value at (x,y,z) coord (meters)
+    Thread safe
+  */
+  bool setPosition(float x, float y, float z, bool value);
+
+  /*
+    Set occupancy value at (x,y,z) index
+    Thread safe
+  */
+  bool setIndex(int x, int y, int z, bool value);
+
   /*
     Clear the grid
+    Thread safe
   */
   void clearAll();
 
   /*
     Clear the area contained within the given x-y polygon and z1-z2 height
+    Thread safe
   */
   bool clearPositionBox(std::vector<std::vector<float>> polygon, float z1, float z2);
 
   /////////////////////////////
+  // Array access functions
+  /////////////////////////////
+
+  /*
+    Get occupancy value at (x,y,z) coord (meters)
+    Thead safe
+  */
+  bool atPosition(float x, float y, float z, bool &value);
+
+  /*
+    Get occupancy value at (x,y,z) index
+    Thread safe
+  */
+  bool atIndex(int x, int y, int z, bool &value);
+
+  /* 
+    Check if (x,y,z) indices are in the bounds of the array
+    Not thead safe
+  */
+  bool checkIndex(int x, int y, int z);
+
+  /*
+    Check if (x,y,z) position is in bounds of array
+    Not thead safe
+  */
+  bool checkPosition(float x, float y, float z);
+
+  /*
+    Get the position of the cell at the supplied index
+    Returns false is the index is outside of the map bounds
+    Not thead safe
+  */
+  bool toPosition(int ix, int iy, int iz, float &px, float &py, float &pz);
+
+  /*
+    Get the index of the cell that contains the supplied position
+    Returns false is the point is outside of the map bounds
+    Not thread safe
+  */
+  bool toIndex(float px, float py, float pz, int &ix, int &iy, int &iz);
+
+  /////////////////////////////
   //  Ray casting and point cloud insertion
   /////////////////////////////
+
+  /*
+    For each point in scancloud, cast a ray from sensorOrigin to the point and update occupancy values
+    Thread safe
+  */ 
   void insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const pcl::PointXYZ &sensorOrigin);
+
+  /*
+    Get a vector of all occupied points within the map bounds
+    Thread safe
+  */
   std::vector<pcl::PointXYZ> getMap();
 
   /////////////////////////////
   // Getter functions
   /////////////////////////////
+
   int getWidth();
   int getHeight();
   float getResolution();
@@ -203,18 +289,20 @@ public:
   float getMaxXP();
   float getMinYP();
   float getMaxYP();
-  int getMinXI();
   int getMaxXI();
-  int getMinYI();
   int getMaxYI();
-  int getMinZI();
   int getMaxZI();
   float getXPosition();
   float getYPosition();
 
+  /////////////////////////////
+  // Benchmark Timer
+  /////////////////////////////
+
   #ifdef TIMEIT
   std::unique_ptr<cpp_timer::Timer> timer;
   #else
+  // Even if not using the timer, we need to keep the class size the same
   private: std::unique_ptr<char> decoy_;
   #endif
 

@@ -73,14 +73,12 @@ namespace rolling_map
 {
 
 RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
-  width(w),
-  height(h),
-  resolution(res),
-  xPosition(x),
-  yPosition(y),
-  z0(zmin),
-  minXI(0),
-  minYI(0)
+  width_(w),
+  height_(h),
+  resolution_(res),
+  xPosition_(x),
+  yPosition_(y),
+  z0_(zmin)
 {
   #ifdef TIMEIT
   timer = std::make_unique<cpp_timer::Timer>();
@@ -88,18 +86,18 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
   #endif
 
   // lock the mutex to prevent callbacks from starting early
-  boost::unique_lock<boost::shared_mutex> tlock{translateMutex};  
+  std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);  
 
   // set bound of grid
-  if(width%2 == 0)
+  if(width_%2 == 0)
   {
-    x0 = xPosition - (width/2)*resolution;
-    y0 = yPosition - (width/2)*resolution;
+    x0_ = xPosition_ - (width_/2)*resolution_;
+    y0_ = yPosition_ - (width_/2)*resolution_;
   }
   else
   {
-    x0 = xPosition - (width/2)*resolution - resolution/2.0;
-    y0 = yPosition - (width/2)*resolution - resolution/2.0;
+    x0_ = xPosition_ - (width_/2)*resolution_ - resolution_/2.0;
+    y0_ = yPosition_ - (width_/2)*resolution_ - resolution_/2.0;
   }
 
   CUDA_ONLY(
@@ -119,43 +117,11 @@ RollingMap::~RollingMap()
   CUDA_ONLY(cudaFree(d_voxel_grid_));
 }
 
+#ifndef USE_CUDA
 void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const pcl::PointXYZ &sensorOrigin)
 {
   // Do not insert while we are translating the map
-  boost::shared_lock<boost::shared_mutex> tlock{translateMutex};  
-
-#ifdef USE_CUDA
-  CellMap occupied;
-  int cloudSize = scancloud.size();
-  float fStart[3] = {sensorOrigin.x, sensorOrigin.y, sensorOrigin.z};
-  int iStart[3] = {0,0,0};
-  pcl::PointXYZ start_voxel_loc;
-
-  // Get index of sensor posistion
-  if(!toIndex(fStart[0],fStart[1],fStart[2],iStart[0],iStart[1],iStart[2]))
-  {
-    ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Cannot cast ray from sensor because it is not contained in the map bounds. Map bounds: (" 
-    << getMinXP() << ", " << getMinYP() << ", " << getMinZP() << ") to (" << getMaxXP() << ", " << getMaxYP() << ", " << getMaxZP() 
-    << "). sensor position: (" << fStart[0] << ", " << fStart[1] << ", " << fStart[2] << ").");
-    return; 
-  }
-
-  // Get position of start voxel
-  if(!toPosition(iStart[0],iStart[1],iStart[2],start_voxel_loc.x,start_voxel_loc.y,start_voxel_loc.z))
-  {
-    ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Cannot cast ray from sensor because sensor voxel is not contained in the map bounds. Map bounds: (" 
-    << getMinXI() << ", " << getMinYI() << ", " << getMinZI() << ") to (" << getMaxXI() << ", " << getMaxYI() << ", " << getMaxZI() 
-    << "). sensor position: (" << iStart[0] << ", " << iStart[1] << ", " << iStart[2] << ").");
-    return; 
-  }
-
-  // Cast all rays on gpu for multithreading
-  TIC("CastRays")
-  if(!castRays(scancloud, sensorOrigin, start_voxel_loc))
-    ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Error in cuda castRays function.");
-  TOC("CastRays")
-
-#else
+  std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);  
 
   CellMap free, occupied;
   #pragma omp parallel for schedule(guided)
@@ -176,63 +142,27 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
   // Update free cells
   setFree(free);
   setOccupied(occupied);
-#endif
 }
 
-#ifdef USE_CUDA
-void RollingMap::setFree(int cloudSize, int maxRay, int* rayPoints, int* raySizes)
-{
-  // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};  
-  std::list<Coord> removeable_coords;
-
-  // Iterate through free cells and erase them from map
-  #pragma omp parallel for
-  for(int i = 0; i < cloudSize; i++)
-  {
-    for(int j = 0; j < raySizes[i]-1; j++)
-    {
-      Coord coord = newCoord(rayPoints[i*maxRay+j],rayPoints[i*maxRay+(cloudSize*maxRay)+j],rayPoints[i*maxRay+(2*cloudSize*maxRay)+j]);
-      if (map.count(coord))
-      #pragma omp critical (record_coord)
-      {
-        removeable_coords.push_back(coord);
-      }
-    }
-  }
-
-  for (const Coord& c : removeable_coords){
-    map.erase(c);
-  }
-}
-
-#else
 void RollingMap::setFree(CellMap &free)
 {
-  // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};
-
   // Iterate through free cells and erase them from map
   for(CellMap::iterator it = free.begin(); it != free.end(); ++it)
   {
-    map.erase(*it);
+    map_.erase(*it);
   }
 }
-#endif
+
 void RollingMap::setOccupied(CellMap &occupied)
 {
-  // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};  
-
   // Iterate through free cells and add them to the map
   for(CellMap::iterator it = occupied.begin(); it != occupied.end(); ++it)
   {
-    map.insert(*it);
+    map_.insert(*it);
   }
 }
 
 // Non-CUDA castRay method inspired by ROS octomap: http://wiki.ros.org/octomap
-#ifndef USE_CUDA
 void RollingMap::castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sensorOrigin, CellMap &free)
 {
   // Init vars
@@ -267,7 +197,7 @@ void RollingMap::castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sen
     usePI = true;
 
   // Check direction magnitude for divide by zero or same cell
-  if(fabs(directionMagnitude) < resolution)
+  if(fabs(directionMagnitude) < resolution_)
   {
     ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Cannot cast ray becuase magnitude of direction vector is very small");
     return;
@@ -289,9 +219,9 @@ void RollingMap::castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sen
     else if(direction[dir] < 0.0)
       stepDirection[dir] = -1;
 
-    float voxelBorder = currentPosition[dir] + stepDirection[dir]*resolution*0.5;
+    float voxelBorder = currentPosition[dir] + stepDirection[dir]*resolution_*0.5;
     accumulatedError[dir] = (voxelBorder - origin[dir])/direction[dir];
-    deltaError[dir] = resolution/fabs(direction[dir]);
+    deltaError[dir] = resolution_/fabs(direction[dir]);
   }
 
   // Loop until we are out of map bounds
@@ -325,61 +255,31 @@ void RollingMap::castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sen
     if(!done)
     #pragma omp critical (free_insert) 
     {
-      free.insert(newCoord(currentIndex[0],currentIndex[1],currentIndex[2]));
+      free.emplace(currentIndex[0],currentIndex[1],currentIndex[2]);
     }
   }
 }
-#endif
 
 std::vector<pcl::PointXYZ> RollingMap::getMap()
 {
   std::vector<pcl::PointXYZ> mapcloud;
 
   // Read lock map mutex
-  boost::shared_lock<boost::shared_mutex> mlock{mapMutex};
+  std::shared_lock<std::shared_timed_mutex> read_lock(map_mutex_);
 
-  // Do not allow getMap while we are translating the map
-  boost::shared_lock<boost::shared_mutex> tlock{translateMutex}; 
-
-#ifdef USE_CUDA
-
-  const size_t num_bits = width*width*height;
-  const size_t num_ints = num_bits/voxel_block_size + 1;
-  std::vector<voxel_block_t> voxel_grid(num_ints);
-  CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_data_, num_ints*sizeof(uint32_t), cudaMemcpyDeviceToHost));
-
-  for (size_t bit_idx = 0; bit_idx < num_bits; bit_idx++){
-    const size_t  byte_idx = bit_idx/voxel_block_size;
-    const voxel_block_t bit_mask = static_cast<voxel_block_t>(1) << (bit_idx % voxel_block_size);
-
-    if (voxel_grid[byte_idx] & bit_mask){
-      mapcloud.emplace_back(
-        (bit_idx % width),
-        (bit_idx / width) % width,
-        (bit_idx / width / width) % height
-      );
-    }
-  }
-
-#else
-
-  for(CellMap::iterator it = map.begin(); it != map.end(); it++)
+  for(CellMap::iterator it = map_.begin(); it != map_.end(); it++)
   {
     mapcloud.emplace_back(it->x,it->y,it->z);
   }
 
-#endif
 
   return mapcloud;
 }
 
-#ifndef USE_CUDA
 void RollingMap::updatePosition(float x, float y)
 {
-  // Write lock for translate mutex
-  boost::unique_lock<boost::shared_mutex> tlock{translateMutex};
-
-  ros::Time start = ros::Time::now();  
+  // Write lock for map mutex
+  std::unique_lock<std::shared_mutex> write_lock{map_mutex_};
 
   // Find indices of the new and old positions
   int xIndex, yIndex, zIndex, xOld, yOld, xChange, yChange;
@@ -394,38 +294,32 @@ void RollingMap::updatePosition(float x, float y)
   clearX(xChange);
   clearY(yChange);
   
-  xPosition = x;
-  yPosition = y;
-  minXI += xChange;
-  minYI += yChange;
-  x0 += xChange*resolution;
-  y0 += yChange*resolution;
+  xPosition_ = x;
+  yPosition_ = y;
+  x0_ += xChange*resolution_;
+  y0_ += yChange*resolution_;
 }
-#endif
 
 void RollingMap::clearX(int shift)
 {
   if(shift == 0)
     return;
-  if(abs(shift) >= width)
+  if(abs(shift) >= width_)
   {
     clearAll();
     return;
-  }
-
-  // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};  
+  } 
 
   int clip;
   if(shift > 0)
-    clip = getMinXI() + shift;
+    clip = shift;
   else
     clip = getMaxXI() + shift;
 
-  for(CellMap::iterator it = map.begin(); it != map.end();)
+  for(CellMap::iterator it = map_.begin(); it != map_.end();)
   {
     if((shift > 0 && it->x < clip) || (shift < 0 && it->x > clip))
-      it = map.erase(it);
+      it = map_.erase(it);
     else
       it++;
   }
@@ -435,25 +329,22 @@ void RollingMap::clearY(int shift)
 {
   if(shift == 0)
     return;
-  if(abs(shift) >= width)
+  if(abs(shift) >= width_)
   {
     clearAll();
     return;
-  }
-
-  // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};  
+  } 
 
   int clip;
   if(shift > 0)
-    clip = getMinYI() + shift;
+    clip = shift;
   else
     clip = getMaxYI() + shift;
 
-  for(CellMap::iterator it = map.begin(); it != map.end();)
+  for(CellMap::iterator it = map_.begin(); it != map_.end();)
   {
     if((shift > 0 && it->y < clip) || (shift < 0 && it->y > clip))
-      it = map.erase(it);
+      it = map_.erase(it);
     else
       it++;
   }
@@ -461,14 +352,12 @@ void RollingMap::clearY(int shift)
 
 void RollingMap::clearAll()
 {
-  // Do not clear while we are translating the map
-  boost::shared_lock<boost::shared_mutex> tlock{translateMutex};  
-  
   // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};
+  std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
 
-  map.clear();
+  map_.clear();
 }
+#endif
 
 bool RollingMap::clearPositionBox(std::vector<std::vector<float>> polygon, float z1, float z2)
 {
@@ -477,6 +366,9 @@ bool RollingMap::clearPositionBox(std::vector<std::vector<float>> polygon, float
     ROS_ERROR("RollingMap: clearPositionBox polygon size must be at least 2! Cannot clear polygon.");
     return false;
   }
+
+  // Write lock map mutex
+  std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
 
   ROS_INFO_STREAM("RollingMap: Clearing position box. z1" << z1 << " z2: " << z2);
   std::vector<std::vector<int>> ipoly;
@@ -499,9 +391,6 @@ bool RollingMap::clearPositionBox(std::vector<std::vector<float>> polygon, float
   int ix, iy, iz2;
   index(polygon[0][0],polygon[0][1],z2,ix,iy,iz2);
 
-  // Do not clear while we are translating the map
-  boost::shared_lock<boost::shared_mutex> tlock{translateMutex};  
-
   return clearIndexBox(ipoly, iz1, iz2);
 }
 
@@ -522,11 +411,8 @@ bool RollingMap::clearIndexBox(std::vector<std::vector<int>> polygon, int z1, in
 
   ROS_INFO_STREAM("RollingMap: Clearing index box. z1" << z1 << " z2: " << z2);
 
-  // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};
-
   // Delete elements in box
-  for(CellMap::iterator it = map.begin(); it != map.end();)
+  for(CellMap::iterator it = map_.begin(); it != map_.end();)
   {
     std::vector<int> point;
     point.push_back(it->x);
@@ -534,7 +420,7 @@ bool RollingMap::clearIndexBox(std::vector<std::vector<int>> polygon, int z1, in
     if(pointInPoly(point,polygon) &&
        it->z >= z1 && it->z <= z2)
     {
-      it = map.erase(it);
+      it = map_.erase(it);
     }
     else
       it++;
@@ -575,8 +461,12 @@ bool RollingMap::pointInPoly(std::vector<int> point, std::vector<std::vector<int
   return true;
 }
 
+#ifndef USE_CUDA
 bool RollingMap::atPosition(float x, float y, float z, bool &value)
 {
+  // Read lock map mutex
+  std::shared_lock<std::shared_timed_mutex> read_lock(map_mutex_);
+
   // Convert position values to indices (with position checking)
   int xIndex, yIndex, zIndex;
   if(!toIndex(x,y,z,xIndex,yIndex,zIndex))
@@ -587,76 +477,74 @@ bool RollingMap::atPosition(float x, float y, float z, bool &value)
 
 bool RollingMap::atIndex(int x, int y, int z, bool &value)
 {
+  // Read lock map mutex
+  std::shared_lock<std::shared_timed_mutex> read_lock(map_mutex_);
+
   // Make sure indices are in map bounds
   if(!checkIndex(x,y,z))
     return false;
 
-  Coord coord = newCoord(x,y,z);
-
-  // Read lock map mutex
-  boost::shared_lock<boost::shared_mutex> mlock{mapMutex};
+  Coord coord(x,y,z);
 
   // Lookup value
-  CellMap::iterator it = map.find(coord);
-  if(it != map.end())
-    value = true;
-  else
-    value = false;
+  CellMap::iterator it = map_.find(coord);
+  value = (it != map_.end());
   return true;
 }
 
 bool RollingMap::setPosition(float x, float y, float z, bool value)
 {
+  std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
+
   // Get the index, return false if out of bounds
   int xIndex, yIndex, zIndex;
   if(!toIndex(x,y,z,xIndex,yIndex,zIndex))
     return false;
 
-  return setIndex(xIndex,yIndex,zIndex,value);
-}
-
-bool RollingMap::setIndex(int x, int y, int z, bool value)
-{
-  // Return false if out of bounds
-  if(!checkIndex(x,y,z))
-    return false;
-
-  Coord coord = newCoord(x,y,z);
-
-  // Write lock map mutex
-  boost::unique_lock<boost::shared_mutex> mlock{mapMutex};
+  Coord coord(x,y,z);
 
   // Set value at adjusted indices
   if(value)
-    map.insert(coord);
+    map_.insert(coord);
   else
-    map.erase(coord);
+    map_.erase(coord);
 
   return true;
 }
 
+bool RollingMap::setIndex(int x, int y, int z, bool value)
+{
+  // Write lock map mutex
+  std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
+
+  // Return false if out of bounds
+  if(!checkIndex(x,y,z))
+    return false;
+
+  Coord coord(x,y,z);
+
+  // Set value at adjusted indices
+  if(value)
+    map_.insert(coord);
+  else
+    map_.erase(coord);
+
+  return true;
+}
+#endif
+
 bool RollingMap::checkIndex(int x, int y, int z)
 {
-  if(x >= getMinXI() && x <= getMaxXI() && 
-     y >= getMinYI() && y <= getMaxYI() && 
-     z >= getMinZI() && z <= getMaxZI())
-  {
-    return true;
-  }
-  else
-    return false;
+  return(x >= 0 && x <= getMaxXI() && 
+         y >= 0 && y <= getMaxYI() && 
+         z >= 0 && z <= getMaxZI());
 }
 
 bool RollingMap::checkPosition(float x, float y, float z)
 {
-  if(x >= getMinXP() && x < getMaxXP() && 
-     y >= getMinYP() && y < getMaxYP() && 
-     z >= getMinZP() && z < getMaxZP())
-  {
-    return true;
-  }
-  else
-    return false;
+  return(x >= getMinXP() && x < getMaxXP() && 
+         y >= getMinYP() && y < getMaxYP() && 
+         z >= getMinZP() && z < getMaxZP());
 }
 
 bool RollingMap::toPosition(int ix, int iy, int iz, float &px, float &py, float &pz)
@@ -687,112 +575,88 @@ void RollingMap::position(int ix, int iy, int iz, float &px, float &py, float &p
 {
   // Index is allowed to be out of bounds.
   // We just want to know the x,y,z value in position space
-  px = x0 + resolution/2.0 + ix*resolution;
-  py = y0 + resolution/2.0 + iy*resolution;
-  pz = z0 + resolution/2.0 + iz*resolution;
+  px = x0_ + resolution_/2.0 + ix*resolution_;
+  py = y0_ + resolution_/2.0 + iy*resolution_;
+  pz = z0_ + resolution_/2.0 + iz*resolution_;
 }
 
 void RollingMap::index(float px, float py, float pz, int &ix, int &iy, int &iz)
 {
   // Position is allowed to be out of bounds.
-  // We just want to know teh x,y,z value in index space
-  ix = (px - x0)/resolution;
-  iy = (py - y0)/resolution;
-  iz = (pz - z0)/resolution;
+  // We just want to know the x,y,z value in index space
+  ix = (px - x0_)/resolution_;
+  iy = (py - y0_)/resolution_;
+  iz = (pz - z0_)/resolution_;
 }
 
 int RollingMap::getWidth()
 {
-  return width;
+  return width_;
 }
 
 int RollingMap::getHeight()
 {
-  return height;
+  return height_;
 }
 
 float RollingMap::getResolution()
 {
-  return resolution;
+  return resolution_;
 }
 
 float RollingMap::getXPosition()
 {
-  return xPosition;
+  return xPosition_;
 }
 
 float RollingMap::getYPosition()
 {
-  return yPosition;
+  return yPosition_;
 }
 
 float RollingMap::getMinXP()
 {
-  return x0;
+  return x0_;
 }
 
 float RollingMap::getMaxXP()
 {
-  return x0 + width*resolution;
+  return x0_ + width_*resolution_;
 }
 
 float RollingMap::getMinYP()
 {
-  return y0;
+  return y0_;
 }
 
 float RollingMap::getMaxYP()
 {
-  return y0 + width*resolution;  
+  return y0_ + width_*resolution_;  
 }
 
 float RollingMap::getMinZP()
 {
-  return z0;
+  return z0_;
 }
 
 float RollingMap::getMaxZP()
 {
-  return z0 + height*resolution;
-}
-
-int RollingMap::getMinXI()
-{
-  return minXI;
+  return z0_ + height_*resolution_;
 }
 
 int RollingMap::getMaxXI()
 {
-  return minXI + (width-1);
-}
-
-int RollingMap::getMinYI()
-{
-  return minYI;
+  return width_-1;
 }
 
 int RollingMap::getMaxYI()
 {
-  return minYI + (width-1);  
-}
-
-int RollingMap::getMinZI()
-{
-  return 0;
+  return width_-1;  
 }
 
 int RollingMap::getMaxZI()
 {
-  return height-1;
-}
-
-Coord RollingMap::newCoord(int x, int y, int z)
-{
-  Coord coord;
-  coord.x = x;
-  coord.y = y;
-  coord.z = z;
-  return coord;
+  return height_-1;
 }
 
 } // namespace rolling_map

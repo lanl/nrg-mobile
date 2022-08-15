@@ -139,6 +139,8 @@ __global__ void translateMap(rolling_map::cudaVoxelGrid* voxel_grid, int change,
 
 void rolling_map::RollingMap::updatePosition(float x, float y){
 
+  std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
+
   // find indices of the new and old positions
   int xIndex, yIndex, zIndex, xOld, yOld;
   index(x,y,0.0,xIndex,yIndex,zIndex);
@@ -154,9 +156,9 @@ void rolling_map::RollingMap::updatePosition(float x, float y){
   block_size.z = 8;
 
   dim3 grid_size;
-  grid_size.x = this->width / block_size.x + 1;
+  grid_size.x = width_ / block_size.x + 1;
   grid_size.y = 1;
-  grid_size.z = this->height / block_size.z + 1;
+  grid_size.z = height_ / block_size.z + 1;
 
   if (xChange){
     translateMap<<<grid_size,block_size>>>(d_voxel_grid_, xChange, X_CHANGE);
@@ -170,12 +172,12 @@ void rolling_map::RollingMap::updatePosition(float x, float y){
     CUDA_SAFE(cudaGetLastError(); /* translateMapY */);
   }
   
-  xPosition = x;
-  yPosition = y;
-  x0 += xChange*resolution;
-  y0 += yChange*resolution;
+  xPosition_ = x;
+  yPosition_ = y;
+  x0_ += xChange*resolution_;
+  y0_ += yChange*resolution_;
 
-  updateMetaData<<<1,1>>>(d_voxel_grid_, x0, y0);
+  updateMetaData<<<1,1>>>(d_voxel_grid_, x0_, y0_);
   cudaDeviceSynchronize();
   CUDA_SAFE(cudaGetLastError(); /* updateMetaData */);
 }

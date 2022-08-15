@@ -51,6 +51,7 @@
 #include <cuda_runtime.h>
 #endif
 
+#include <functional>
 #include <cuda_safe.cuh>
 
 namespace rolling_map{
@@ -61,15 +62,21 @@ struct Coord
   int y;
   int z;
 
-  CUDA_BOTH bool operator==(const Coord& c){
+  CUDA_BOTH Coord(){}
+  CUDA_BOTH Coord(int x_, int y_, int z_) : x(x_), y(y_), z(z_) {}
+
+  CUDA_BOTH bool operator==(const Coord& c) const{
     return c.x == x && c.y == y && c.z == z;
   }
 };
 
-struct HashCoord
+} // end namespace rolling_map
+
+template<>
+struct std::hash<rolling_map::Coord>
 {
 public:
-  size_t operator() (const Coord &coord) const 
+  size_t operator() (const rolling_map::Coord &coord) const noexcept
   {
     return static_cast<size_t>(coord.x)
     + 1447*static_cast<size_t>(coord.y)
@@ -77,15 +84,3 @@ public:
   }
 };
 
-struct CompareCoord
-{
-public:
-  bool operator()(const Coord & c1, const Coord & c2) const
-  {
-    return (c1.x == c2.x) &&
-           (c1.y == c2.y) &&
-           (c1.z == c2.z);
-  }
-};
-
-} // end namespace rolling_map
