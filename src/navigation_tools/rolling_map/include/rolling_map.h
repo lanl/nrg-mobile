@@ -48,6 +48,7 @@
 #ifndef _ROLLING_MAP_H_
 #define _ROLLING_MAP_H_
 
+#include <ros/ros.h>
 #include <unordered_set>
 #include <string>
 #include <vector>
@@ -55,7 +56,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include "boost/thread/shared_mutex.hpp"
-#include "pcl_ros/point_cloud.h"
+#include "pcl/point_types.h"
 #include "coord.h"
 
 #ifdef TIMEIT

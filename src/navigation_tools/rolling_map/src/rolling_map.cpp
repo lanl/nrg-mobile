@@ -279,7 +279,7 @@ std::vector<pcl::PointXYZ> RollingMap::getMap()
 void RollingMap::updatePosition(float x, float y)
 {
   // Write lock for map mutex
-  std::unique_lock<std::shared_mutex> write_lock{map_mutex_};
+  std::unique_lock<std::shared_timed_mutex> write_lock(map_mutex_);
 
   // Find indices of the new and old positions
   int xIndex, yIndex, zIndex, xOld, yOld, xChange, yChange;
