@@ -52,6 +52,7 @@
 #include <rolling_map.h>
 #include "cuda_safe.cuh"
 #include "cuda_voxel_grid.cuh"
+#include "thrust/device_vector.h"
 
 #define THREADS_PER_BLOCK 256
 
@@ -83,7 +84,7 @@ __device__ int minErrorDirection(const float* error){
 // ------------------------------------------------------------------------------------------------
 // KERNEL
 
-__global__ void crs(pcl::PointXYZ* pointcloud, size_t num_points, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, rolling_map::cudaVoxelGrid* voxel_grid)
+__global__ void castRayKernel(pcl::PointXYZ* pointcloud, size_t num_points, const pcl::PointXYZ sensor_origin, const pcl::PointXYZ start_voxel_loc, rolling_map::cudaVoxelGrid* voxel_grid)
 {
   size_t index = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -152,29 +153,19 @@ __global__ void crs(pcl::PointXYZ* pointcloud, size_t num_points, const pcl::Poi
 
 bool rolling_map::RollingMap::castRays(const std::vector<pcl::PointXYZ>& points, const pcl::PointXYZ& sensor_origin, const pcl::PointXYZ& start_voxel_loc) 
 {
-  // Device copies of three inputs and output, size of allocated memory, num of threads and blocks
-  pcl::PointXYZ *d_pointcloud;
-
-  // Alloc memory for the pointcloud on the device
-  size_t num_points      = points.size();
-  size_t pointcloud_size = num_points * sizeof(pcl::PointXYZ);
-  CUDA_SAFE(cudaMalloc(&d_pointcloud, pointcloud_size));
-
   // Copy inputs to device
-  CUDA_SAFE(cudaMemcpy(d_pointcloud, points.data(), pointcloud_size, cudaMemcpyHostToDevice));
+  thrust::device_vector<pcl::PointXYZ> d_pointcloud(points);
 
   // Calculates blocks and threads and launch average3 kernel on GPU
   if (cuda_ok){
     int thr=THREADS_PER_BLOCK;
-    int blk=num_points/THREADS_PER_BLOCK+1;
-    crs<<<blk,thr>>>(d_pointcloud, num_points, sensor_origin, start_voxel_loc, d_voxel_grid_);
+    int blk=points.size()/THREADS_PER_BLOCK+1;
+    castRayKernel<<<blk,thr>>>(d_pointcloud.data().get(), d_pointcloud.size(), sensor_origin, start_voxel_loc, d_voxel_grid_);
 
     // Wait for the GPU to finish
     cudaDeviceSynchronize();
     CUDA_SAFE(cudaGetLastError() /*cast rays*/);
   }
-
-  cudaFree(d_pointcloud);
 
   // Determine if the operation was successful, then reset the flag
   bool all_good = cuda_ok;
