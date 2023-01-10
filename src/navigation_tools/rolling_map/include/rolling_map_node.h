@@ -55,6 +55,7 @@
 #include "nav_msgs/OccupancyGrid.h"
 #include "rolling_map/Box.h"
 #include "sensor_msgs/PointCloud2.h"
+#include "xmlrpcpp/XmlRpc.h"
 
 #ifdef TIMEIT
 #include "cpp_timer/Timer.h"
@@ -64,7 +65,7 @@ namespace rolling_map
 {
 struct MapParams
 {
-  std::string pc_topic;
+  XmlRpc::XmlRpcValue pc_topics;
   std::string map_topic;
   std::string marker_topic;
   std::string reset_topic;
@@ -94,7 +95,7 @@ private:
 
   // Listen for point clouds
   bool hasData;
-  ros::Subscriber pcSub;
+  std::vector<ros::Subscriber> pc_subs_;
   void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg);
 
   // Publish visual data and map

@@ -88,29 +88,33 @@ RollingMapNode::RollingMapNode() :
 {
   #ifdef TIMEIT
   main_timer = std::unique_ptr<cpp_timer::Timer> (new cpp_timer::Timer());
-  main_timer->allow_interruption = true;
 
   callback_timer = std::unique_ptr<cpp_timer::Timer> (new cpp_timer::Timer());
-  callback_timer->allow_interruption = true;
   #endif
 
   // Get params
-  if(!n.getParam("pc_topic", param.pc_topic) ||
-     !n.getParam("map_topic", param.map_topic) ||
-     !n.getParam("marker_topic", param.marker_topic) ||
-     !n.getParam("reset_topic", param.reset_topic) ||
-     !n.getParam("world_frame", param.world_frame) ||
-     !n.getParam("robot_frame", param.robot_frame) ||
-     !n.getParam("width", param.width) ||
-     !n.getParam("height", param.height) ||
-     !n.getParam("resolution", param.resolution) ||
-     !n.getParam("z_minimum", param.z_minimum) ||
-     !n.getParam("run_frequency", param.run_frequency) ||
-     !n.getParam("translate_distance", param.translate_distance) ||
-     !n.getParam("ignore_top_rows", param.ignore_top_rows) ||
-     !n.getParam("sensing_radius", param.sensing_radius))
+  if(!n.getParam("map_topic", param.map_topic)                   
+  || !n.getParam("marker_topic", param.marker_topic)             
+  || !n.getParam("reset_topic", param.reset_topic)               
+  || !n.getParam("world_frame", param.world_frame)               
+  || !n.getParam("robot_frame", param.robot_frame)               
+  || !n.getParam("width", param.width)                           
+  || !n.getParam("height", param.height)                         
+  || !n.getParam("resolution", param.resolution)                 
+  || !n.getParam("z_minimum", param.z_minimum)                   
+  || !n.getParam("run_frequency", param.run_frequency)           
+  || !n.getParam("translate_distance", param.translate_distance) 
+  || !n.getParam("ignore_top_rows", param.ignore_top_rows)       
+  || !n.getParam("sensing_radius", param.sensing_radius))
   {
     ROS_ERROR("RollingMapNode: Cannot construct map. Some params could not be read from server.");
+    return;
+  }
+
+  // Get all of the sensor sources
+  bool has_topics = n.getParam("pc_topics", param.pc_topics);
+  if (not has_topics || param.pc_topics.getType() != XmlRpc::XmlRpcValue::TypeArray || param.pc_topics.size() == 0){
+    ROS_ERROR("RollingMapNode: Cannot construct map. Pointcloud topics not set.");
     return;
   }
 
@@ -128,7 +132,10 @@ RollingMapNode::RollingMapNode() :
   map = new RollingMap(param.width, param.height, param.resolution, robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY(), param.z_minimum);
 
   // Set up ROS communications
-  pcSub = n.subscribe(param.pc_topic, 1, &RollingMapNode::pcCallback, this);
+  for (int i = 0; i < param.pc_topics.size(); i++){
+    std::string topic = static_cast<std::string>(param.pc_topics[i]);
+    pc_subs_.emplace_back(n.subscribe(topic, 1, &RollingMapNode::pcCallback, this));
+  }
   markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
   mapPub = n.advertise<nav_msgs::OccupancyGrid>(param.map_topic,1,true);
   readyPub = n.advertise<std_msgs::Bool>("ready",1,true);
