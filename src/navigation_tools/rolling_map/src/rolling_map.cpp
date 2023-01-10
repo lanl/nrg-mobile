@@ -82,7 +82,6 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
 {
   #ifdef TIMEIT
   timer = std::make_unique<cpp_timer::Timer>();
-  timer->allow_interruption = true;
   #endif
 
   // lock the mutex to prevent callbacks from starting early
