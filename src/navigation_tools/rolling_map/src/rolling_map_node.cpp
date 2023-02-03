@@ -133,8 +133,13 @@ RollingMapNode::RollingMapNode() :
 
   // Set up ROS communications
   for (int i = 0; i < param.pc_topics.size(); i++){
-    std::string topic = static_cast<std::string>(param.pc_topics[i]);
-    pc_subs_.emplace_back(n.subscribe(topic, 1, &RollingMapNode::pcCallback, this));
+    std::string topic = static_cast<std::string>(param.pc_topics[i]["topic"]);
+    std::string sensor_frame = static_cast<std::string>(param.pc_topics[i]["sensor_frame"]);
+    pc_subs_.emplace_back(n.subscribe<pcl::PointCloud<pcl::PointXYZ>>(topic, 1, 
+      [this, sensor_frame](const auto& msg){
+        this->pcCallback(msg, sensor_frame);
+      }
+    ));
   }
   markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
   mapPub = n.advertise<nav_msgs::OccupancyGrid>(param.map_topic,1,true);
@@ -150,25 +155,13 @@ RollingMapNode::RollingMapNode() :
   output_cloud_.height = 1;
   output_cloud_.fields.resize(4);
 
-  output_cloud_.fields[0].name   = "x";
-  output_cloud_.fields[0].offset =  0 ;
-  output_cloud_.fields[0].count  =  1 ;
-  output_cloud_.fields[0].datatype = sensor_msgs::PointField::FLOAT32;
-
-  output_cloud_.fields[1].name   = "y";
-  output_cloud_.fields[1].offset =  4 ;
-  output_cloud_.fields[1].count  =  1 ;
-  output_cloud_.fields[1].datatype = sensor_msgs::PointField::FLOAT32;
-
-  output_cloud_.fields[2].name   = "z";
-  output_cloud_.fields[2].offset =  8 ;
-  output_cloud_.fields[2].count  =  1 ;
-  output_cloud_.fields[2].datatype = sensor_msgs::PointField::FLOAT32;
-
-  output_cloud_.fields[3].name   = "one";
-  output_cloud_.fields[3].offset =  12;
-  output_cloud_.fields[3].count  =  1 ;
-  output_cloud_.fields[3].datatype = sensor_msgs::PointField::FLOAT32;
+  constexpr std::array<const char*, 4> field_names = {"x", "y", "z", "one"};
+  for (int i = 0; i < 4; i++){
+    output_cloud_.fields[i].name   = field_names[i];
+    output_cloud_.fields[i].offset = i*4;
+    output_cloud_.fields[i].count  = 1;
+    output_cloud_.fields[i].datatype = sensor_msgs::PointField::FLOAT32;
+  }
 
   output_cloud_.is_bigendian = false;
   output_cloud_.point_step = 16;
@@ -228,7 +221,7 @@ bool RollingMapNode::getTransform(tf::StampedTransform &transform, bool init)
   }
 }
 
-void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg)
+void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg, const std::string& sensor_frame_id)
 {
   CB_TIC("pcCallback");
 
@@ -241,17 +234,28 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
 
   // Transform point cloud to world frame
   CB_TIC("TransformPointcloud");
-  tf::StampedTransform sensorTransform;
-  sensorTransform.frame_id_ = cloud->header.frame_id;
-  sensorTransform.child_frame_id_ = param.world_frame;
-  if(!getTransform(sensorTransform))
+  tf::StampedTransform dataTransform;
+  dataTransform.frame_id_ = cloud->header.frame_id;
+  dataTransform.child_frame_id_ = param.world_frame;
+  if(!getTransform(dataTransform))
   {
-    ROS_ERROR_THROTTLE(1.0, "RollingMapNode: Could not insert point cloud because we could not look up transform from cloud frame to world frame");
+    ROS_ERROR_THROTTLE(1.0, "RollingMapNode: Could not insert point cloud because we could not look up data transform from %s to %s", cloud->header.frame_id.c_str(), param.world_frame.c_str());
     CB_TOC("TransformPointcloud");
+    CB_TOC("pcCallback");
     return;
   }
-  pcl_ros::transformPointCloud(*cloud,*cloud,sensorTransform);
+  pcl_ros::transformPointCloud(*cloud,*cloud,dataTransform);
   CB_TOC("TransformPointcloud");
+
+  // Find the sensor origin in the world frame
+  tf::StampedTransform sensorTransform;
+  sensorTransform.frame_id_ = sensor_frame_id == "" ? cloud->header.frame_id : sensor_frame_id;
+  sensorTransform.child_frame_id_ = param.world_frame;
+  if (!getTransform(sensorTransform)){
+    ROS_ERROR_THROTTLE(1.0, "RollingMapNode: Could not insert point cloud because we could not look up sensor transform from %s to %s", sensor_frame_id.c_str(), param.world_frame.c_str());
+    CB_TOC("pcCallback");
+    return;
+  }
 
   // Pull out vector of points and insert cloud
   CB_TIC("insertCloud");
@@ -511,6 +515,7 @@ void RollingMapNode::publishMessages()
   geometry_msgs::PolygonStamped outline;
   outline.header.stamp = ros::Time::now();
   outline.header.frame_id = param.world_frame;
+  outline.polygon.points.reserve(8);
   outline.polygon.points.resize(4);
   outline.polygon.points[0].x = minXP;
   outline.polygon.points[0].y = minYP;
@@ -520,6 +525,11 @@ void RollingMapNode::publishMessages()
   outline.polygon.points[2].y = minYP + map->getWidth()*map->getResolution();
   outline.polygon.points[3].x = minXP;
   outline.polygon.points[3].y = minYP + map->getWidth()*map->getResolution();
+  for (int i = 0; i < 4; i++){
+    outline.polygon.points[i].z = minZP;
+    outline.polygon.points.push_back(outline.polygon.points[i]);
+    outline.polygon.points.back().z += map->getHeight()*map->getResolution();
+  }
   outlinePub.publish(outline);
 
   M_TOC("publishMessages");

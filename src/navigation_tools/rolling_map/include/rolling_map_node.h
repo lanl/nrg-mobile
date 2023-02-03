@@ -96,7 +96,7 @@ private:
   // Listen for point clouds
   bool hasData;
   std::vector<ros::Subscriber> pc_subs_;
-  void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg);
+  void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg, const std::string& sensor_frame_id);
 
   // Publish visual data and map
   ros::Publisher markerPub;

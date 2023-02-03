@@ -1,6 +1,6 @@
 pc_topics:
-  - "/velodyne_points"
-  - "/camera/depth/color/filtered_points"
+  - {topic: "/velodyne_points", sensor_frame: "velodyne"}
+  - {topic: "/camera/depth/color/filtered_points", sensor_frame: "camera_depth_optical_frame"}
 map_topic: "/projected_map"
 marker_topic: "occupied_cells"
 reset_topic: "reset"
@@ -10,7 +10,7 @@ width: 225
 height: 25
 ignore_top_rows: 4
 resolution: 0.03225
-z_minimum: -0.07
+z_minimum: -0.05
 run_frequency: 50.0
 translate_distance: 0.5
 sensing_radius: 0.0
