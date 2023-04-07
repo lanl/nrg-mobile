@@ -4,7 +4,7 @@ pc_topics:
 map_topic: "/projected_map"
 marker_topic: "occupied_cells"
 reset_topic: "reset"
-world_frame: "odom"
+world_frame: "map"
 robot_frame: "base_link"
 width: 225
 height: 25
