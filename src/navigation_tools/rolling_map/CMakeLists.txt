@@ -5,7 +5,7 @@ project(rolling_map LANGUAGES CXX)
 enable_language(CUDA OPTIONAL)
 
 # Compile as C++ 17
-set(CMAKE_CXX_FLAGS "-std=c++17")
+add_compile_options(-std=c++17)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -w")
 # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --diag_suppress=20012 -Xcudafe --diag_suppress=20013 -Xcudafe --diag_suppress=20014 -Xcudafe --diag_suppress=20015 Xcudafe --diag_suppress=Wcpp")
 
