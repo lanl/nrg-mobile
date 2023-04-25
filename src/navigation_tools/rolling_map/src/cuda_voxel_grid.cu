@@ -74,9 +74,9 @@ __device__ cudaVoxelGrid::~cudaVoxelGrid() {
 __device__ rolling_map::Coord cudaVoxelGrid::toIndex(const pcl::PointXYZ& p) const{
   rolling_map::Coord idx;
   const float one_over_res = 1/resolution;
-  idx.x = (p.x - min_x)*one_over_res;
-  idx.y = (p.y - min_y)*one_over_res;
-  idx.z = (p.z - min_z)*one_over_res;
+  idx.x = floor((p.x - min_x)*one_over_res);
+  idx.y = floor((p.y - min_y)*one_over_res);
+  idx.z = floor((p.z - min_z)*one_over_res);
   return idx;
 }
 
