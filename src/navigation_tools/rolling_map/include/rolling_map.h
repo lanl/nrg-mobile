@@ -70,6 +70,8 @@
 #endif
 #include "cuda_safe.cuh"
 
+#include "cuda_voxel_grid.cuh"
+
 namespace rolling_map
 {
 
@@ -99,7 +101,7 @@ private:
 
   // CUDA variables
   cuda_ptr cudaVoxelGrid* d_voxel_grid_;  // Address of the cudaVoxelGrid object on the GPU
-  uint32_t* d_voxel_data_;                // Address of the voxel grid data structure
+  cuda_ptr voxel_block_t* d_voxel_data_;  // Address of the voxel grid data structure on the GPU
   size_t voxel_grid_size_bytes_ = 0;
   bool cuda_ok = true;
 
@@ -275,7 +277,7 @@ public:
     Get a vector of all occupied points within the map bounds
     Thread safe
   */
-  std::vector<pcl::PointXYZ> getMap();
+  std::vector<Coord> getMap();
 
   /////////////////////////////
   // Getter functions
