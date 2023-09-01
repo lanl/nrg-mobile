@@ -93,7 +93,7 @@ __device__ voxel_block_t& cudaVoxelGrid::getVoxel(const Coord& c){
 
 __device__ void cudaVoxelGrid::collideAtVoxel(const Coord& c){
   voxel_block_t& voxel = getVoxel(c);
-  atomicAdd(&voxel, static_cast<voxel_block_t>(1));
+  atomicAdd(&voxel, hit_count);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -116,19 +116,32 @@ __device__ bool cudaVoxelGrid::offGrid(const Coord& coord) const {
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-__global__ void initVoxelGrid(rolling_map::cudaVoxelGrid** map_ptr, int width, int height, float resolution, float minx, float miny, float minz, voxel_block_t* voxel_device_ptr){
+__global__ void initVoxelGrid(
+  rolling_map::cudaVoxelGrid** map_ptr, 
+  ProbabilityModel model,
+  int width, 
+  int height, 
+  float resolution, 
+  float minx, 
+  float miny, 
+  float minz, 
+  voxel_block_t* voxel_device_ptr)
+{
 	*map_ptr = new cudaVoxelGrid(width, height, resolution);
 	(*map_ptr)->voxels = voxel_device_ptr;
 	(*map_ptr)->min_x  = minx;
 	(*map_ptr)->min_y  = miny;
 	(*map_ptr)->min_z  = minz;
+  (*map_ptr)->probability_threshold = model.threshold;
+  (*map_ptr)->probability_maximum = model.maximum;
+  (*map_ptr)->hit_count = model.hit_miss_ratio;
 }
 
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-bool rolling_map::RollingMap::cudaInit(){
+bool rolling_map::RollingMap::cudaInit(ProbabilityModel model){
 
     voxel_grid_size_bytes_ = width_*width_*height_*sizeof(voxel_block_t);
 
@@ -141,7 +154,7 @@ bool rolling_map::RollingMap::cudaInit(){
     CUDA_SAFE(cudaMalloc(&d_voxel_data_, voxel_grid_size_bytes_));	
 
     // Initialize the grid with the map geometry
-    initVoxelGrid<<<1,1>>>(new_grid, width_, height_, resolution_, x0_, y0_, z0_, d_voxel_data_);
+    initVoxelGrid<<<1,1>>>(new_grid, model, width_, height_, resolution_, x0_, y0_, z0_, d_voxel_data_);
     cudaDeviceSynchronize();
     CUDA_SAFE(cudaGetLastError(); /* initVoxelGrid */);
 

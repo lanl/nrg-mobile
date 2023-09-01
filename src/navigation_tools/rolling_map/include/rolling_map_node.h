@@ -79,6 +79,9 @@ struct MapParams
   float translate_distance;
   int ignore_top_rows;
   float sensing_radius;
+  float occupancy_threshold_val = 0.0f;
+  float occupancy_maximum_val = 1.0f;
+  float hit_miss_ratio = 1.0f;
 };
 
 class RollingMapNode 

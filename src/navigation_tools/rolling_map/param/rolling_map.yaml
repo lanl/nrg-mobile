@@ -14,3 +14,6 @@ z_minimum: -0.05
 run_frequency: 50.0
 translate_distance: 0.5
 sensing_radius: 0.0
+occupancy_threshold: 0
+occupancy_maximum: 1
+hit_miss_ratio: 1

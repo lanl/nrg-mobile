@@ -136,7 +136,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
 // ================================================================================================
 // ================================================================================================
 
-__global__ void reduceGrid(cudaVoxelGrid* grid, Coord* pointcloud, voxel_block_t upper_cap){
+__global__ void reduceGrid(cudaVoxelGrid* grid, Coord* pointcloud){
     const size_t voxel_x_idx = threadIdx.x + blockIdx.x * blockDim.x;
     const size_t voxel_y_idx = threadIdx.y + blockIdx.y * blockDim.y;
     const size_t voxel_z_idx = threadIdx.z + blockIdx.z * blockDim.z;
@@ -147,8 +147,10 @@ __global__ void reduceGrid(cudaVoxelGrid* grid, Coord* pointcloud, voxel_block_t
 
     // Clamp the voxel value to legal limits
     voxel_block_t& voxel = grid->voxels[idx];
-    if (voxel > upper_cap)  voxel = upper_cap;
-    else if (voxel < 0)     voxel = 0;
+    if (voxel > grid->probability_maximum)  
+        voxel = grid->probability_maximum;
+    else if (voxel < 0)     
+        voxel = 0;
     
     // Mark as occupied if over the threshold
     if (voxel > grid->probability_threshold){
@@ -179,7 +181,7 @@ std::vector<Coord> RollingMap::getMap(){
     // Fill any point that is occupied with its integer coordinate
     dim3 block_dim(8, 8, 4);
     dim3 grid_dim(width_/block_dim.x + 1, width_/block_dim.y + 1, height_/block_dim.z + 1);
-    reduceGrid<<<grid_dim, block_dim>>>(d_voxel_grid_, device_pointcloud.data().get(), 30);
+    reduceGrid<<<grid_dim, block_dim>>>(d_voxel_grid_, device_pointcloud.data().get());
     cudaDeviceSynchronize();
     CUDA_SAFE(cudaGetLastError());
 

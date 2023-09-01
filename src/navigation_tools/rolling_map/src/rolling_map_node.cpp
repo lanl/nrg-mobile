@@ -105,7 +105,10 @@ RollingMapNode::RollingMapNode() :
   || !n.getParam("run_frequency", param.run_frequency)           
   || !n.getParam("translate_distance", param.translate_distance) 
   || !n.getParam("ignore_top_rows", param.ignore_top_rows)       
-  || !n.getParam("sensing_radius", param.sensing_radius))
+  || !n.getParam("sensing_radius", param.sensing_radius)
+  || !n.getParam("occupancy_threshold", param.occupancy_threshold_val)
+  || !n.getParam("occupancy_maximum", param.occupancy_maximum_val)
+  || !n.getParam("hit_miss_ratio", param.hit_miss_ratio))
   {
     ROS_ERROR("RollingMapNode: Cannot construct map. Some params could not be read from server.");
     return;
@@ -128,8 +131,10 @@ RollingMapNode::RollingMapNode() :
     return;
   }
 
+  ProbabilityModel model{param.occupancy_maximum_val, param.occupancy_threshold_val, param.hit_miss_ratio};
+
   // Construct map
-  map = new RollingMap(param.width, param.height, param.resolution, robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY(), param.z_minimum);
+  map = new RollingMap(param.width, param.height, param.resolution, robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY(), param.z_minimum, model);
 
   // Set up ROS communications
   for (int i = 0; i < param.pc_topics.size(); i++){

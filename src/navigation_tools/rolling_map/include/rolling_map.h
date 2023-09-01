@@ -75,6 +75,12 @@
 namespace rolling_map
 {
 
+struct ProbabilityModel{
+  float maximum;
+  float threshold;
+  float hit_miss_ratio;
+};
+
 // Forward declaration
 class cudaVoxelGrid;
 
@@ -99,9 +105,12 @@ private:
 
   std::shared_timed_mutex map_mutex_;        // Mutex for thread safety when we translate the map
 
+  // Probability modelling
+  ProbabilityModel probability_model;
+
   // CUDA variables
-  cuda_ptr cudaVoxelGrid* d_voxel_grid_;  // Address of the cudaVoxelGrid object on the GPU
-  cuda_ptr voxel_block_t* d_voxel_data_;  // Address of the voxel grid data structure on the GPU
+  cuda_ptr cudaVoxelGrid* d_voxel_grid_ = nullptr;  // Address of the cudaVoxelGrid object on the GPU
+  cuda_ptr voxel_block_t* d_voxel_data_ = nullptr;  // Address of the voxel grid data structure on the GPU
   size_t voxel_grid_size_bytes_ = 0;
   bool cuda_ok = true;
 
@@ -127,7 +136,7 @@ private:
     Returns false if there are any errors in CUDA API calls
     Not thread safe
   */
-  bool cudaInit();
+  bool cudaInit(ProbabilityModel model);
 
   /*
     Launch a kernel to cast rays for each point in the points vector
@@ -185,7 +194,7 @@ private:
   bool pointInPoly(std::vector<int> point, std::vector<std::vector<int>> poly);
 
 public:
-  RollingMap(int w, int h, float res, float x, float y, float zmin);
+  RollingMap(int w, int h, float res, float x, float y, float zmin, ProbabilityModel model);
   ~RollingMap();
   
   /////////////////////////////

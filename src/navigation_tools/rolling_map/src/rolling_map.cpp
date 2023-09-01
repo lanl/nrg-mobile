@@ -72,7 +72,7 @@
 namespace rolling_map
 {
 
-RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
+RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin, ProbabilityModel model) :
   width_(w),
   height_(h),
   resolution_(res),
@@ -100,7 +100,7 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin) :
   }
 
   CUDA_ONLY(
-    if(cudaInit()) 
+    if(cudaInit(model)) 
       ROS_INFO("Voxel grid succesfully allocated on the GPU");
     else 
       ROS_ERROR("Voxel grid initialization failed!");
