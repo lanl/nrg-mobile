@@ -83,36 +83,25 @@ __device__ rolling_map::Coord cudaVoxelGrid::toIndex(const pcl::PointXYZ& p) con
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-__device__ voxelIndex cudaVoxelGrid::getVoxelMask(const Coord& c) const{
-  voxelIndex idx;
-  size_t bit_idx = width*width*c.z + width*c.y + c.x;
-  idx.mem_ptr    = voxels + bit_idx/voxel_block_size;
-  idx.bit_mask   = static_cast<voxel_block_t>(1) << (bit_idx % voxel_block_size);
-  return idx;
+__device__ voxel_block_t& cudaVoxelGrid::getVoxel(const Coord& c){
+  const size_t voxel_idx = width*width*c.z + width*c.y + c.x;
+  return voxels[voxel_idx];
 }
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-__device__ void cudaVoxelGrid::markVoxel(const Coord& c){
-  const voxelIndex voxel_idx = getVoxelMask(c);
-  atomicOr(voxel_idx.mem_ptr, voxel_idx.bit_mask);
+__device__ void cudaVoxelGrid::collideAtVoxel(const Coord& c){
+  voxel_block_t& voxel = getVoxel(c);
+  atomicAdd(&voxel, static_cast<voxel_block_t>(1));
 }
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-__device__ void cudaVoxelGrid::freeVoxel(const Coord& c){
-  const voxelIndex voxel_idx = getVoxelMask(c);
-  atomicAnd(voxel_idx.mem_ptr, ~voxel_idx.bit_mask);
-}
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-
-__device__ bool cudaVoxelGrid::getVoxel(const Coord& c) const {
-  const voxelIndex voxel_idx = getVoxelMask(c);
-  return (*voxel_idx.mem_ptr & voxel_idx.bit_mask);
+__device__ void cudaVoxelGrid::passThroughVoxel(const Coord& c){
+  voxel_block_t& voxel = getVoxel(c);
+  atomicAdd(&voxel, static_cast<voxel_block_t>(-1));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -127,7 +116,7 @@ __device__ bool cudaVoxelGrid::offGrid(const Coord& coord) const {
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
-__global__ void initVoxelGrid(rolling_map::cudaVoxelGrid** map_ptr, int width, int height, float resolution, float minx, float miny, float minz, uint32_t* voxel_device_ptr){
+__global__ void initVoxelGrid(rolling_map::cudaVoxelGrid** map_ptr, int width, int height, float resolution, float minx, float miny, float minz, voxel_block_t* voxel_device_ptr){
 	*map_ptr = new cudaVoxelGrid(width, height, resolution);
 	(*map_ptr)->voxels = voxel_device_ptr;
 	(*map_ptr)->min_x  = minx;
@@ -141,7 +130,10 @@ __global__ void initVoxelGrid(rolling_map::cudaVoxelGrid** map_ptr, int width, i
 
 bool rolling_map::RollingMap::cudaInit(){
 
-    voxel_grid_size_bytes_ = (width_*width_*height_/voxel_block_size + 1)*sizeof(voxel_block_t);
+    voxel_grid_size_bytes_ = width_*width_*height_*sizeof(voxel_block_t);
+
+    // Just in case this function is called more than once by accident
+    CUDA_SAFE(cudaFree(d_voxel_data_));
 
     // Allocate space for the voxel grid class, as well as the data grid itself
     cudaVoxelGrid** new_grid;

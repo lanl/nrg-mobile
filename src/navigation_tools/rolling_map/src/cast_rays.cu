@@ -136,11 +136,11 @@ __global__ void castRayKernel(pcl::PointXYZ* pointcloud, size_t num_points, cons
 
     // Otherwise we mark the current index as unoccupied
     if(!done)
-      voxel_grid->freeVoxel(current_index);
+      voxel_grid->passThroughVoxel(current_index);
   }
 
   if (!voxel_grid->offGrid(point_idx)){
-    voxel_grid->markVoxel(point_idx);
+    voxel_grid->collideAtVoxel(point_idx);
   }
 
 }

@@ -49,39 +49,14 @@
 #include "rolling_map.h"
 #include "cuda_safe.cuh"
 #include "cuda_voxel_grid.cuh"
+#include <thrust/remove.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
 
 // ================================================================================================
 // ================================================================================================
 
 namespace rolling_map{
-
-__global__ void setIndexCuda(rolling_map::cudaVoxelGrid* voxel_grid, const rolling_map::Coord idx, const bool value){
-    // Note: Boundary checking is done on the host
-    if (value){
-        voxel_grid->markVoxel(idx);
-    }else{
-        voxel_grid->freeVoxel(idx);
-    }
-}
-
-bool RollingMap::setIndex(int x, int y, int z, bool value){
-    std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
-
-    if (not checkIndex(x, y, z)) return false;
-
-    setIndexCuda<<<1,1>>>(d_voxel_grid_, {x,y,z}, value);
-    return true;
-}
-
-bool RollingMap::setPosition(float xp, float yp, float zp, bool value){
-    std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
-
-    int x, y, z;
-    if (not toIndex(xp, yp, zp, x, y, z)) return false;
-
-    setIndexCuda<<<1,1>>>(d_voxel_grid_, {x,y,z}, value);
-    return true;
-}
 
 // ================================================================================================
 // ================================================================================================
@@ -161,29 +136,58 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
 // ================================================================================================
 // ================================================================================================
 
-std::vector<pcl::PointXYZ> RollingMap::getMap(){
+__global__ void reduceGrid(cudaVoxelGrid* grid, Coord* pointcloud, voxel_block_t upper_cap){
+    const size_t voxel_x_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    const size_t voxel_y_idx = threadIdx.y + blockIdx.y * blockDim.y;
+    const size_t voxel_z_idx = threadIdx.z + blockIdx.z * blockDim.z;
+
+    if (voxel_x_idx >= grid->width || voxel_y_idx >= grid->width || voxel_z_idx >= grid->height) return;
+
+    size_t idx = grid->width * grid->width * voxel_z_idx + grid->width * voxel_y_idx + voxel_x_idx;
+
+    // Clamp the voxel value to legal limits
+    voxel_block_t& voxel = grid->voxels[idx];
+    if (voxel > upper_cap)  voxel = upper_cap;
+    else if (voxel < 0)     voxel = 0;
+    
+    // Mark as occupied if over the threshold
+    if (voxel > grid->probability_threshold){
+        Coord& c = pointcloud[idx];
+        c.x = voxel_x_idx;
+        c.y = voxel_y_idx;
+        c.z = voxel_z_idx;
+    }
+}
+
+// ================================================================================================
+// ================================================================================================
+
+// Define struct for check if a Coord is zero on the device
+struct is_zero{
+    __device__ __host__
+    bool operator()(const Coord& c) const noexcept{
+        return c.x == 0 && c.y == 0 && c.z == 0;
+    }
+};
+
+std::vector<Coord> RollingMap::getMap(){
     std::shared_lock<std::shared_timed_mutex> read_lock(map_mutex_); 
 
-    // Initialize output vector
-    std::vector<pcl::PointXYZ> mapcloud;
+    // Create a pointcloud where all points are (0, 0, 0)
+    thrust::device_vector<Coord> device_pointcloud(width_*width_*height_);
 
-    const size_t num_bits = width_*width_*height_;
-    const size_t num_ints = num_bits/voxel_block_size + 1;
-    std::vector<voxel_block_t> voxel_grid(num_ints);
-    CUDA_SAFE(cudaMemcpy(voxel_grid.data(), d_voxel_data_, num_ints*sizeof(voxel_block_t), cudaMemcpyDeviceToHost));
+    // Fill any point that is occupied with its integer coordinate
+    dim3 block_dim(8, 8, 4);
+    dim3 grid_dim(width_/block_dim.x + 1, width_/block_dim.y + 1, height_/block_dim.z + 1);
+    reduceGrid<<<grid_dim, block_dim>>>(d_voxel_grid_, device_pointcloud.data().get(), 30);
+    cudaDeviceSynchronize();
+    CUDA_SAFE(cudaGetLastError());
 
-    for (size_t bit_idx = 0; bit_idx < num_bits; bit_idx++){
-        const size_t  byte_idx = bit_idx/voxel_block_size;
-        const voxel_block_t bit_mask = static_cast<voxel_block_t>(1) << (bit_idx % voxel_block_size);
-
-        if (voxel_grid[byte_idx] & bit_mask){
-            mapcloud.emplace_back(
-                (bit_idx % width_),
-                (bit_idx / width_) % width_,
-                (bit_idx / width_ / width_) % height_
-            );
-        }
-    }
+    // Remove any point that is still zero after the process
+    auto new_end = thrust::remove_if(device_pointcloud.begin(), device_pointcloud.end(), is_zero());
+    device_pointcloud.erase(new_end, device_pointcloud.end());
+    std::vector<Coord> mapcloud(device_pointcloud.size());
+    thrust::copy(device_pointcloud.begin(), device_pointcloud.end(), mapcloud.begin());
 
     return mapcloud;
 }

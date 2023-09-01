@@ -53,13 +53,17 @@
 
 namespace rolling_map{
 
-typedef uint32_t voxel_block_t;
+typedef float voxel_block_t;
 const size_t voxel_block_size = sizeof(voxel_block_t)*8;
 
 struct voxelIndex{
 	voxel_block_t* mem_ptr;
 	voxel_block_t  bit_mask;
 };
+
+#ifndef USE_CUDA
+#define __device__
+#endif
 
 class cudaVoxelGrid{
 	public:
@@ -69,13 +73,11 @@ class cudaVoxelGrid{
 
 		__device__ Coord toIndex(const pcl::PointXYZ& p) const;
 
-		__device__ voxelIndex getVoxelMask(const Coord& c) const;
+		__device__ voxel_block_t& getVoxel(const Coord& c);
 
-		__device__ void markVoxel(const Coord& c);
+		__device__ void collideAtVoxel(const Coord& c);
 
-		__device__ void freeVoxel(const Coord& c);
-
-		__device__ bool getVoxel(const Coord& c) const;
+		__device__ void passThroughVoxel(const Coord& c);
 
 		__device__ bool offGrid(const Coord& c) const;
 
@@ -88,6 +90,8 @@ class cudaVoxelGrid{
 		float min_x;
 		float min_y;
 		float min_z;
+
+		voxel_block_t probability_threshold = 5;
 };
 
 } // end namespace rolling_map
