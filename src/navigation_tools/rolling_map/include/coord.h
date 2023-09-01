@@ -58,11 +58,11 @@ namespace rolling_map{
 
 struct Coord
 {
-  int x;
-  int y;
-  int z;
+  int x = 0;
+  int y = 0;
+  int z = 0;
 
-  CUDA_BOTH Coord(){}
+  CUDA_BOTH Coord() = default;
   CUDA_BOTH Coord(int x_, int y_, int z_) : x(x_), y(y_), z(z_) {}
 
   CUDA_BOTH bool operator==(const Coord& c) const{
