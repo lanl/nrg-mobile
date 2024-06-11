@@ -33,6 +33,9 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   tf
   pcl_ros
+  pcl_conversions
+  std_msgs
+  geometry_msgs
 )
 
 # Use boost for shared_mutex
