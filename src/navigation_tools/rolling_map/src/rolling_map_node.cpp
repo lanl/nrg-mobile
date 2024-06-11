@@ -105,7 +105,10 @@ RollingMapNode::RollingMapNode() :
   || !n.getParam("run_frequency", param.run_frequency)           
   || !n.getParam("translate_distance", param.translate_distance) 
   || !n.getParam("ignore_top_rows", param.ignore_top_rows)       
-  || !n.getParam("sensing_radius", param.sensing_radius))
+  || !n.getParam("sensing_radius", param.sensing_radius)
+  || !n.getParam("occupancy_threshold", param.occupancy_threshold_val)
+  || !n.getParam("occupancy_maximum", param.occupancy_maximum_val)
+  || !n.getParam("hit_miss_ratio", param.hit_miss_ratio))
   {
     ROS_ERROR("RollingMapNode: Cannot construct map. Some params could not be read from server.");
     return;
@@ -128,8 +131,10 @@ RollingMapNode::RollingMapNode() :
     return;
   }
 
+  ProbabilityModel model{param.occupancy_maximum_val, param.occupancy_threshold_val, param.hit_miss_ratio};
+
   // Construct map
-  map = new RollingMap(param.width, param.height, param.resolution, robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY(), param.z_minimum);
+  map = new RollingMap(param.width, param.height, param.resolution, robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY(), param.z_minimum, model);
 
   // Set up ROS communications
   for (int i = 0; i < param.pc_topics.size(); i++){
@@ -390,7 +395,7 @@ void RollingMapNode::publishMessages()
 
   // Get a copy of the current map
   M_TIC("getMap");
-  std::vector<pcl::PointXYZ> points = map->getMap();
+  std::vector<Coord> points = map->getMap();
   M_TOC("getMap");
 
   const float minXP = map->getMinXP();
@@ -417,14 +422,11 @@ void RollingMapNode::publishMessages()
     grid.data.resize(map->getWidth()*map->getWidth(),0);
 
     // Sum z columns to build 2d map
-    for(int i = 0; i < points.size(); i++)
+    for(const Coord& c : points)
     {
-      int col = points[i].x;
-      int row = points[i].y;
-      int z = points[i].z;
-      if(z <= map->getMaxZI() - param.ignore_top_rows)
+      if(c.z <= map->getMaxZI() - param.ignore_top_rows)
       {
-        int index = row*grid.info.width + col; 
+        int index = c.y*grid.info.width + c.x; 
         if(index >= 0 && index <= grid.data.size())
           grid.data[index] = 100;
         else
@@ -451,48 +453,51 @@ void RollingMapNode::publishMessages()
   // Convert integer point indices to float coordinates
   M_TIC("Index2Float");
   const float res = map->getResolution();
-  std::for_each(std::begin(points), std::end(points), [&](pcl::PointXYZ& p){
-    p.x = minXP + p.x*res;
-    p.y = minYP + p.y*res;
-    p.z = minZP + p.z*res;
-  }); 
+  std::vector<pcl::PointXYZ> true_points(points.size());
+  std::transform(std::begin(points), std::end(points), true_points.begin(), [&](const Coord& c) -> pcl::PointXYZ {
+    pcl::PointXYZ p;
+    p.x = minXP + c.x*res;
+    p.y = minYP + c.y*res;
+    p.z = minZP + c.z*res;
+    return p;
+  });
   M_TOC("Index2Float");
 
-  M_TIC("publishMarkers");
-  if(markerPub.getNumSubscribers() > 0)
-  {
-    // Add points to marker array
-    visualization_msgs::Marker occupied;
-    occupied.header.frame_id = param.world_frame;
-    occupied.header.stamp = ros::Time::now();
-    occupied.ns = "map";
-    occupied.id = 1;
-    occupied.type = visualization_msgs::Marker::CUBE_LIST;
-    occupied.action = visualization_msgs::Marker::ADD;
-    occupied.pose.orientation.w = 1.0;
-    occupied.scale.x = map->getResolution();
-    occupied.scale.y = map->getResolution();
-    occupied.scale.z = map->getResolution();
-    occupied.colors.resize(points.size());
+  // M_TIC("publishMarkers");
+  // if(markerPub.getNumSubscribers() > 0)
+  // {
+  //   // Add points to marker array
+  //   visualization_msgs::Marker occupied;
+  //   occupied.header.frame_id = param.world_frame;
+  //   occupied.header.stamp = ros::Time::now();
+  //   occupied.ns = "map";
+  //   occupied.id = 1;
+  //   occupied.type = visualization_msgs::Marker::CUBE_LIST;
+  //   occupied.action = visualization_msgs::Marker::ADD;
+  //   occupied.pose.orientation.w = 1.0;
+  //   occupied.scale.x = map->getResolution();
+  //   occupied.scale.y = map->getResolution();
+  //   occupied.scale.z = map->getResolution();
+  //   occupied.colors.resize(points.size());
 
-    for(int i = 0; i < points.size(); i++)
-    {
-      geometry_msgs::Point center;
-      center.x = points[i].x;
-      center.y = points[i].y;
-      center.z = points[i].z;
-      occupied.points.push_back(center);
-      float heightPercent = points[i].z/map->getHeight()/res;
-      std_msgs::ColorRGBA color;
-      color.r = 0;
-      color.g = heightPercent;
-      color.b = 1-heightPercent;
-      color.a = 1;
-      occupied.colors[i] = color;
-    }
-    markerPub.publish(occupied);
-  }
-  M_TOC("publishMarkers");
+  //   for(int i = 0; i < points.size(); i++)
+  //   {
+  //     geometry_msgs::Point center;
+  //     center.x = points[i].x;
+  //     center.y = points[i].y;
+  //     center.z = points[i].z;
+  //     occupied.points.push_back(center);
+  //     float heightPercent = points[i].z/map->getHeight()/res;
+  //     std_msgs::ColorRGBA color;
+  //     color.r = 0;
+  //     color.g = heightPercent;
+  //     color.b = 1-heightPercent;
+  //     color.a = 1;
+  //     occupied.colors[i] = color;
+  //   }
+  //   markerPub.publish(occupied);
+  // }
+  // M_TOC("publishMarkers");
 
 
   // Copy the data to the pointcloud message
@@ -502,7 +507,7 @@ void RollingMapNode::publishMessages()
   output_cloud_.width = points.size();
   output_cloud_.data.clear();
   output_cloud_.data.resize(output_cloud_.point_step * output_cloud_.width);
-  memcpy(output_cloud_.data.data(), points.data(), output_cloud_.data.size());
+  memcpy(output_cloud_.data.data(), true_points.data(), output_cloud_.data.size());
   pointcloudPub.publish(output_cloud_);
   M_TOC("publishPointcloud");
   

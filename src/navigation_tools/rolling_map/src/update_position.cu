@@ -116,16 +116,12 @@ __global__ void translateMap(rolling_map::cudaVoxelGrid* voxel_grid, int change,
 
     // If the translated voxel is off the grid, clear the current voxel
     if (voxel_grid->offGrid(reference_index)){
-      voxel_grid->freeVoxel(voxel_index);
+      voxel_grid->getVoxel(voxel_index) = rolling_map::voxel_block_t{};
     }
 
     // Otherwise match the current voxel with the translated voxel
-    else if (voxel_grid->getVoxel(reference_index)){
-      voxel_grid->markVoxel(voxel_index);
-    }
-
     else{
-      voxel_grid->freeVoxel(voxel_index);
+      voxel_grid->getVoxel(voxel_index) = voxel_grid->getVoxel(reference_index);
     }
   }      
 

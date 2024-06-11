@@ -55,7 +55,7 @@
   <build_export_depend>tf</build_export_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>tf</exec_depend>
-  <build_depend>message_generations</build_depend>
+  <build_depend>message_generation</build_depend>
   <exec_depend>message_runtime</exec_depend>
 
 
