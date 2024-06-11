@@ -259,9 +259,9 @@ void RollingMap::castRay(const pcl::PointXYZ &occPoint, const pcl::PointXYZ &sen
   }
 }
 
-std::vector<pcl::PointXYZ> RollingMap::getMap()
+std::vector<Coord> RollingMap::getMap()
 {
-  std::vector<pcl::PointXYZ> mapcloud;
+  std::vector<Coord> mapcloud;
 
   // Read lock map mutex
   std::shared_lock<std::shared_timed_mutex> read_lock(map_mutex_);

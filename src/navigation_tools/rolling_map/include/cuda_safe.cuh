@@ -66,7 +66,9 @@ if (cuda_ok){                                                                   
 #ifdef USE_CUDA
 #define CUDA_ONLY(x) x
 #define CUDA_BOTH __device__ __host__
+#define CUDA_DEVICE __device__
 #else
 #define CUDA_ONLY(x)
 #define CUDA_BOTH 
+#define CUDA_DEVICE
 #endif

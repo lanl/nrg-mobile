@@ -48,7 +48,7 @@
 #pragma once
 
 #include <coord.h>
-#include <cuda_runtime.h>
+#include <cuda_safe.cuh>
 #include <pcl/point_types.h>
 
 namespace rolling_map{
@@ -61,25 +61,21 @@ struct voxelIndex{
 	voxel_block_t  bit_mask;
 };
 
-#ifndef USE_CUDA
-#define __device__
-#endif
-
 class cudaVoxelGrid{
 	public:
-		__device__ cudaVoxelGrid(int width, int height, float res);
+		CUDA_DEVICE cudaVoxelGrid(int width, int height, float res);
 
-		__device__ ~cudaVoxelGrid();
+		CUDA_DEVICE ~cudaVoxelGrid();
 
-		__device__ Coord toIndex(const pcl::PointXYZ& p) const;
+		CUDA_DEVICE Coord toIndex(const pcl::PointXYZ& p) const;
 
-		__device__ voxel_block_t& getVoxel(const Coord& c);
+		CUDA_DEVICE voxel_block_t& getVoxel(const Coord& c);
 
-		__device__ void collideAtVoxel(const Coord& c);
+		CUDA_DEVICE void collideAtVoxel(const Coord& c);
 
-		__device__ void passThroughVoxel(const Coord& c);
+		CUDA_DEVICE void passThroughVoxel(const Coord& c);
 
-		__device__ bool offGrid(const Coord& c) const;
+		CUDA_DEVICE bool offGrid(const Coord& c) const;
 
 		voxel_block_t* voxels;
 
