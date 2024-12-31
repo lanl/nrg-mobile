@@ -70,10 +70,10 @@ __global__ void updateMetaData(rolling_map::cudaVoxelGrid* voxel_grid, float min
 __global__ void translateMap(rolling_map::cudaVoxelGrid* voxel_grid, int change, int dir){
 
   // Index of thread in either the x or y directions
-  size_t long_index = threadIdx.x + blockIdx.x * blockDim.x;
+  int long_index = threadIdx.x + blockIdx.x * blockDim.x;
 
   // Index of thread in the z direction
-  size_t z_index = threadIdx.z + blockIdx.z * blockDim.z;
+  int z_index = threadIdx.z + blockIdx.z * blockDim.z;
   
   // Do not go outside grid bounds
   if (z_index >= voxel_grid->height || long_index >= voxel_grid->width)

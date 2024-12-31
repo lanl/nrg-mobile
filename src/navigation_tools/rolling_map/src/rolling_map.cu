@@ -113,7 +113,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
     // Get index of sensor posistion
     if(!toIndex(sensorOrigin.x, sensorOrigin.y, sensorOrigin.z, sensor_voxel_idx.x, sensor_voxel_idx.y, sensor_voxel_idx.z))
     {
-        ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Cannot cast ray from sensor because it is not contained in the map bounds. Map bounds: (" 
+        RCLCPP_ERROR_STREAM_THROTTLE(logger_, clock_, 1000, "RollingMap: Cannot cast ray from sensor because it is not contained in the map bounds. Map bounds: (" 
         << getMinXP() << ", " << getMinYP() << ", " << getMinZP() << ") to (" << getMaxXP() << ", " << getMaxYP() << ", " << getMaxZP() 
         << "). sensor position: (" << sensorOrigin.x << ", " << sensorOrigin.y << ", " << sensorOrigin.z << ").");
     return; 
@@ -122,7 +122,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
     // Get position of start voxel
     if(!toPosition(sensor_voxel_idx.x, sensor_voxel_idx.y, sensor_voxel_idx.z, start_voxel_loc.x, start_voxel_loc.y, start_voxel_loc.z))
     {
-        ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Cannot cast ray from sensor because sensor voxel is not contained in the map bounds. Map bounds: (0, 0, 0) to " 
+        RCLCPP_ERROR_STREAM_THROTTLE(logger_, clock_, 1000, "RollingMap: Cannot cast ray from sensor because sensor voxel is not contained in the map bounds. Map bounds: (0, 0, 0) to " 
         << getMaxXI() << ", " << getMaxYI() << ", " << getMaxZI() 
         << "). sensor position: (" << sensor_voxel_idx.x << ", " << sensor_voxel_idx.y << ", " << sensor_voxel_idx.z << ").");
     return; 
@@ -130,7 +130,7 @@ void RollingMap::insertCloud(const std::vector<pcl::PointXYZ> &scancloud, const 
 
     // Cast all rays on gpu for multithreading
     if(!castRays(scancloud, sensorOrigin, start_voxel_loc))
-        ROS_ERROR_STREAM_THROTTLE(1.0, "RollingMap: Error in cuda castRays function.");
+        RCLCPP_ERROR_STREAM_THROTTLE(logger_, clock_, 1000, "RollingMap: Error in cuda castRays function.");
 }
 
 // ================================================================================================
@@ -147,8 +147,8 @@ __global__ void reduceGrid(cudaVoxelGrid* grid, Coord* pointcloud){
 
     // Clamp the voxel value to legal limits
     voxel_block_t& voxel = grid->voxels[idx];
-    if (voxel > grid->probability_maximum)  
-        voxel = grid->probability_maximum;
+    if (voxel > 1.0f)  
+        voxel = 1.0f;
     else if (voxel < 0)     
         voxel = 0;
     

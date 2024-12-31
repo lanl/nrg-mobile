@@ -93,7 +93,7 @@ __device__ voxel_block_t& cudaVoxelGrid::getVoxel(const Coord& c){
 
 __device__ void cudaVoxelGrid::collideAtVoxel(const Coord& c){
   voxel_block_t& voxel = getVoxel(c);
-  atomicAdd(&voxel, hit_count);
+  atomicAdd(&voxel, hit_val);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -101,7 +101,7 @@ __device__ void cudaVoxelGrid::collideAtVoxel(const Coord& c){
 
 __device__ void cudaVoxelGrid::passThroughVoxel(const Coord& c){
   voxel_block_t& voxel = getVoxel(c);
-  atomicAdd(&voxel, static_cast<voxel_block_t>(-1));
+  atomicAdd(&voxel, -miss_val);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -133,8 +133,8 @@ __global__ void initVoxelGrid(
 	(*map_ptr)->min_y  = miny;
 	(*map_ptr)->min_z  = minz;
   (*map_ptr)->probability_threshold = model.threshold;
-  (*map_ptr)->probability_maximum = model.maximum;
-  (*map_ptr)->hit_count = model.hit_miss_ratio;
+  (*map_ptr)->hit_val = model.hit_val;
+  (*map_ptr)->miss_val = model.miss_val;
 }
 
 

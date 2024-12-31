@@ -59,23 +59,33 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_type
 
 ## LIBRARIES AND EXECUTABLES ===================
 
+generate_parameter_library(
+  ${PROJECT_NAME}_parameters
+  src/${PROJECT_NAME}_parameters.yaml
+)
+
 ## Set up a C++ library for the rolling map class functionality
 set(LIB_SOURCES
   src/rolling_map.cpp
 )
 
 if(CUDA_ENABLE)
-  set(CUDA_SEPERABLE_COMPILATION ON)
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -rdc=true")
-  list(APPEND LIB_SOURCES src/cast_rays.cu src/cuda_voxel_grid.cu src/update_position.cu src/rolling_map.cu)
+  set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+  set(CMAKE_CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -Xcudafe --diag_suppress=20012")
+  list(APPEND LIB_SOURCES 
+    src/cast_rays.cu
+    src/cuda_voxel_grid.cu
+    src/update_position.cu
+    src/rolling_map.cu
+  )
 endif()
 
-ament_auto_add_library(${PROJECT_NAME}_lib ${LIB_SOURCES})
-set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+ament_auto_add_library(${PROJECT_NAME}_lib STATIC ${LIB_SOURCES})
 
 ## Create an executable node for creating a rolling map in ROS
 ament_auto_add_executable(${PROJECT_NAME}_node src/rolling_map_node.cpp)
-target_link_libraries(${PROJECT_NAME}_node ${cpp_typesupport_target})
+target_link_libraries(${PROJECT_NAME}_node ${cpp_typesupport_target} ${PROJECT_NAME}_parameters)
 
 if (cpp_timer_FOUND)
   add_definitions(-DTIMEIT)

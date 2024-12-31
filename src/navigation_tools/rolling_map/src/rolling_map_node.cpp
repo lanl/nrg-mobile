@@ -45,16 +45,19 @@
 * Author: Alex von Sternberg
 *********************************************************************/
 
-#include "rolling_map_node.h"
-#include "visualization_msgs/msg/marker.hpp"
-#include "pcl/common/transforms.h"
-#include "pcl_conversions/pcl_conversions.h"
-#include "pcl/filters/filter.h"
-#include "std_msgs/msg/bool.hpp"
-#include "geometry_msgs/msg/polygon_stamped.hpp"
 #include <csignal>
 #include <functional>
 #include <execution>
+
+#include <pcl/filters/filter.h>
+#include <pcl/common/transforms.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <pcl_conversions/pcl_conversions.h>
+#include <visualization_msgs/msg/marker.hpp>
+#include <geometry_msgs/msg/polygon_stamped.hpp>
+
+#include "rolling_map_node.h"
 
 #ifdef TIMEIT
 #define M_TIC(x)   main_timer->tic(x)
@@ -81,6 +84,8 @@ namespace rolling_map
 
 RollingMapNode::RollingMapNode() :
   Node("rolling_map_node"),
+  tf_buffer_(this->get_clock()),
+  tf_listener_(tf_buffer_),
   init(false),
   hasData(false)
 {
@@ -90,71 +95,52 @@ RollingMapNode::RollingMapNode() :
   callback_timer = std::unique_ptr<cpp_timer::Timer> (new cpp_timer::Timer());
   #endif
 
-  // Get params
-  if(!n.getParam("map_topic", param.map_topic)                   
-  || !n.getParam("marker_topic", param.marker_topic)             
-  || !n.getParam("reset_topic", param.reset_topic)               
-  || !n.getParam("world_frame", param.world_frame)               
-  || !n.getParam("robot_frame", param.robot_frame)               
-  || !n.getParam("width", param.width)                           
-  || !n.getParam("height", param.height)                         
-  || !n.getParam("resolution", param.resolution)                 
-  || !n.getParam("z_minimum", param.z_minimum)                   
-  || !n.getParam("run_frequency", param.run_frequency)           
-  || !n.getParam("translate_distance", param.translate_distance) 
-  || !n.getParam("ignore_top_rows", param.ignore_top_rows)       
-  || !n.getParam("sensing_radius", param.sensing_radius)
-  || !n.getParam("occupancy_threshold", param.occupancy_threshold_val)
-  || !n.getParam("occupancy_maximum", param.occupancy_maximum_val)
-  || !n.getParam("hit_miss_ratio", param.hit_miss_ratio))
-  {
-    ROS_ERROR("RollingMapNode: Cannot construct map. Some params could not be read from server.");
-    return;
-  }
-
-  // Get all of the sensor sources
-  bool has_topics = n.getParam("pc_topics", param.pc_topics);
-  if (not has_topics || param.pc_topics.getType() != XmlRpc::XmlRpcValue::TypeArray || param.pc_topics.size() == 0){
-    ROS_ERROR("RollingMapNode: Cannot construct map. Pointcloud topics not set.");
-    return;
-  }
+  ParamListener param_listener(this->get_node_parameters_interface());
+  params_ = param_listener.get_params();
 
   // Find current location of the sensor
-  robotTransform.frame_id_ = param.robot_frame;
-  robotTransform.child_frame_id_ = param.world_frame;
-  ros::Duration(3).sleep();
+  robotTransform.header.frame_id = params_.robot_frame;
+  robotTransform.child_frame_id = params_.world_frame;
+  std::this_thread::sleep_for(std::chrono::seconds(3));
   if(!getTransform(robotTransform, true))
   {
-    ROS_ERROR("RollingMapNode: Could not look up initial robot transform. cannot initialize map.");
+    RCLCPP_ERROR(get_logger(), "RollingMapNode: Could not look up initial robot transform. cannot initialize map.");
     return;
   }
 
-  ProbabilityModel model{param.occupancy_maximum_val, param.occupancy_threshold_val, param.hit_miss_ratio};
+  ProbabilityModel model{
+    .threshold = static_cast<float>(params_.occupancy_threshold),
+    .hit_val   = static_cast<float>(params_.hit_value),
+    .miss_val  = static_cast<float>(params_.miss_value)
+  };
 
   // Construct map
-  map = new RollingMap(param.width, param.height, param.resolution, robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY(), param.z_minimum, model);
+  map = std::make_shared<RollingMap>(params_.width, params_.height, params_.resolution, robotTransform.transform.translation.x, robotTransform.transform.translation.y, params_.z_minimum, model);
 
   // Set up ROS communications
-  for (int i = 0; i < param.pc_topics.size(); i++){
-    std::string topic = static_cast<std::string>(param.pc_topics[i]["topic"]);
-    std::string sensor_frame = static_cast<std::string>(param.pc_topics[i]["sensor_frame"]);
-    pc_subs_.emplace_back(n.subscribe<pcl::PointCloud<pcl::PointXYZ>>(topic, 1, 
-      [this, sensor_frame](const auto& msg){
-        this->pcCallback(msg, sensor_frame);
+  for (const std::string& topic : params_.pointcloud_topics){
+    auto new_sub = create_subscription<sensor_msgs::msg::PointCloud2>(topic, rclcpp::SensorDataQoS{}, 
+      [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg){
+        auto cloud = pcl::PointCloud<pcl::PointXYZ>().makeShared();
+        pcl::fromROSMsg(*msg, *cloud);
+        this->pcCallback(cloud);
       }
-    ));
+    );
+    
+    pc_subs_.push_back(new_sub);
   }
-  markerPub = n.advertise<visualization_msgs::Marker>(param.marker_topic, 1, true);
-  mapPub = n.advertise<nav_msgs::OccupancyGrid>(param.map_topic,1,true);
-  readyPub = n.advertise<std_msgs::Bool>("ready",1,true);
-  pointcloudPub = n.advertise<sensor_msgs::PointCloud2>("local_pointcloud", 1, true);
-  outlinePub = n.advertise<geometry_msgs::PolygonStamped>("outline", 1, true);
-  resetService = n.advertiseService(param.reset_topic, &RollingMapNode::resetCallback, this);
-  clearBoxService = n.advertiseService("clear_box", &RollingMapNode::clearBoxCallback, this);
+
+  rclcpp::QoS latching_qos = rclcpp::QoS(1).transient_local();
+  markerPub = create_publisher<visualization_msgs::msg::Marker>("rolling_map/occupied_cells", latching_qos);
+  mapPub = create_publisher<nav_msgs::msg::OccupancyGrid>("rolling_map/projected_map", latching_qos);
+  readyPub = create_publisher<std_msgs::msg::Bool>("rolling_map/ready", latching_qos);
+  pointcloudPub = create_publisher<sensor_msgs::msg::PointCloud2>("local_pointcloud", latching_qos);
+  outlinePub = create_publisher<geometry_msgs::msg::PolygonStamped>("outline", latching_qos);
+  resetService = create_service<std_srvs::srv::Empty>("rolling_map/reset", std::bind(&RollingMapNode::resetCallback, this, std::placeholders::_1, std::placeholders::_2));
+  clearBoxService = create_service<rolling_map::srv::Box>("rolling_map/clear_box", std::bind(&RollingMapNode::clearBoxCallback, this, std::placeholders::_1, std::placeholders::_2));
 
   // Set up the output pointcloud
-  output_cloud_.header.frame_id = param.world_frame;
-  output_cloud_.header.seq = 0;
+  output_cloud_.header.frame_id = params_.world_frame;
   output_cloud_.height = 1;
   output_cloud_.fields.resize(4);
 
@@ -163,24 +149,18 @@ RollingMapNode::RollingMapNode() :
     output_cloud_.fields[i].name   = field_names[i];
     output_cloud_.fields[i].offset = i*4;
     output_cloud_.fields[i].count  = 1;
-    output_cloud_.fields[i].datatype = sensor_msgs::PointField::FLOAT32;
+    output_cloud_.fields[i].datatype = sensor_msgs::msg::PointField::FLOAT32;
   }
 
   output_cloud_.is_bigendian = false;
   output_cloud_.point_step = 16;
   output_cloud_.is_dense = true;
  
-  spinner.start();
+  run_timer_ = create_wall_timer(std::chrono::duration<float>(1/params_.run_frequency), std::bind(&RollingMapNode::run, this));
 
   init = true;
-  ROS_INFO_STREAM("RollingMap initialized. Initial robot position: (" << robotTransform.getOrigin().getX() << ", " << robotTransform.getOrigin().getY() << ")");
+  RCLCPP_INFO_STREAM(get_logger(), "RollingMap initialized. Initial robot position: (" << robotTransform.transform.translation.x << ", " << robotTransform.transform.translation.y << ")");
   return;
-}
-
-RollingMapNode::~RollingMapNode()
-{
-  delete map;
-  // do nothing
 }
 
 bool RollingMapNode::isInit()
@@ -188,30 +168,30 @@ bool RollingMapNode::isInit()
   return init;
 }
 
-bool RollingMapNode::getTransform(tf::StampedTransform &transform, bool init)
+bool RollingMapNode::getTransform(geometry_msgs::msg::TransformStamped &transform, bool init)
 {
   float duration = 0.5;
   if(init)
     duration = 5.0;
-  if(transform.frame_id_.compare(transform.child_frame_id_) != 0)
+  if(transform.header.frame_id != transform.child_frame_id)
   {
-    transform.stamp_ = ros::Time(0);
+    transform.header.stamp = rclcpp::Time(0);
     try
     {
-      if(listener.waitForTransform(transform.child_frame_id_, transform.frame_id_, ros::Time(0), ros::Duration(duration)))
+      if(tf_buffer_.canTransform(transform.child_frame_id, transform.header.frame_id, rclcpp::Time(0), rclcpp::Duration::from_seconds(duration)))
       {
-        listener.lookupTransform(transform.child_frame_id_, transform.frame_id_, ros::Time(0), transform);
+        transform = tf_buffer_.lookupTransform(transform.child_frame_id, transform.header.frame_id, rclcpp::Time(0));
         return true;
       }
       else
       {
-        ROS_ERROR_STREAM("RollingMapNode: getTransform timed out. child_frame: " << transform.child_frame_id_ << " frame: " << transform.frame_id_);
+        RCLCPP_ERROR_STREAM(get_logger(), "RollingMapNode: getTransform timed out. child_frame: " << transform.child_frame_id << " frame: " << transform.header.frame_id);
         return false;
       }
     }
     catch(...)
     {
-      ROS_ERROR_STREAM("RollingMapNode: exception in getTransform. child_frame: " << transform.child_frame_id_ << " frame: " << transform.frame_id_);
+      RCLCPP_ERROR_STREAM(get_logger(), "RollingMapNode: exception in getTransform. child_frame: " << transform.child_frame_id << " frame: " << transform.header.frame_id);
 
       return false;
     }
@@ -219,12 +199,12 @@ bool RollingMapNode::getTransform(tf::StampedTransform &transform, bool init)
   else
   {
     // Set identity transform, frames are not different
-    transform.setIdentity();
+    transform.transform = geometry_msgs::msg::Transform();
     return true;
   }
 }
 
-void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg, const std::string& sensor_frame_id)
+void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg)
 {
   CB_TIC("pcCallback");
 
@@ -237,25 +217,27 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
 
   // Transform point cloud to world frame
   CB_TIC("TransformPointcloud");
-  tf::StampedTransform dataTransform;
-  dataTransform.frame_id_ = cloud->header.frame_id;
-  dataTransform.child_frame_id_ = param.world_frame;
+  geometry_msgs::msg::TransformStamped dataTransform;
+  dataTransform.header.frame_id = cloud->header.frame_id;
+  dataTransform.child_frame_id = params_.world_frame;
   if(!getTransform(dataTransform))
   {
-    ROS_ERROR_THROTTLE(1.0, "RollingMapNode: Could not insert point cloud because we could not look up data transform from %s to %s", cloud->header.frame_id.c_str(), param.world_frame.c_str());
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "RollingMapNode: Could not insert point cloud because we could not look up data transform from %s to %s", cloud->header.frame_id.c_str(), params_.world_frame.c_str());
     CB_TOC("TransformPointcloud");
     CB_TOC("pcCallback");
     return;
   }
-  pcl_ros::transformPointCloud(*cloud,*cloud,dataTransform);
+  
+  Eigen::Isometry3d data_transform_eigen = tf2::transformToEigen(dataTransform);
+  pcl::transformPointCloud(*cloud, *cloud, data_transform_eigen.matrix());
   CB_TOC("TransformPointcloud");
 
   // Find the sensor origin in the world frame
-  tf::StampedTransform sensorTransform;
-  sensorTransform.frame_id_ = sensor_frame_id == "" ? cloud->header.frame_id : sensor_frame_id;
-  sensorTransform.child_frame_id_ = param.world_frame;
+  geometry_msgs::msg::TransformStamped sensorTransform;
+  sensorTransform.header.frame_id = cloud->header.frame_id;
+  sensorTransform.child_frame_id = params_.world_frame;
   if (!getTransform(sensorTransform)){
-    ROS_ERROR_THROTTLE(1.0, "RollingMapNode: Could not insert point cloud because we could not look up sensor transform from %s to %s", sensor_frame_id.c_str(), param.world_frame.c_str());
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "RollingMapNode: Could not insert point cloud because we could not look up sensor transform from %s to %s", cloud->header.frame_id.c_str(), params_.world_frame.c_str());
     CB_TOC("pcCallback");
     return;
   }
@@ -263,7 +245,7 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
   // Pull out vector of points and insert cloud
   CB_TIC("insertCloud");
   std::vector<pcl::PointXYZ> points(cloud->begin(),cloud->end());
-  pcl::PointXYZ origin(sensorTransform.getOrigin().x(),sensorTransform.getOrigin().y(),sensorTransform.getOrigin().z());
+  pcl::PointXYZ origin(sensorTransform.transform.translation.x, sensorTransform.transform.translation.y, sensorTransform.transform.translation.z);
   map->insertCloud(points,origin);
   hasData = true;
   CB_TOC("insertCloud");
@@ -271,118 +253,80 @@ void RollingMapNode::pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& 
   CB_TOC("pcCallback");
 }
 
-void RollingMapNode::createAdjustmentVector(const tf::StampedTransform &sensorTransform, std::vector<pcl::PointXYZ> &points)
-{
-  points.clear();
-  if(param.sensing_radius > 0.000001)
-  {
-    for(int i = 0; i < 360; i++)
-    {
-      // Make sensor circle and transform to map frame
-      tf::Vector3 v;
-      v.setX(param.sensing_radius * cos(i*M_PI/180.0));
-      v.setY(param.sensing_radius * sin(i*M_PI/180.0));
-      v.setZ(0.0);
-      v = sensorTransform(v);
-
-      // Subtract off translation from map to sensor
-      pcl::PointXYZ p;
-      p.x = v.x() - sensorTransform.getOrigin().x();
-      p.y = v.y() - sensorTransform.getOrigin().y();
-      p.z = v.z() - sensorTransform.getOrigin().z();
-
-      // Push back to points vector
-      points.push_back(p);
-    }
-  }
-}
-
-bool RollingMapNode::resetCallback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
+void RollingMapNode::resetCallback(std_srvs::srv::Empty::Request::ConstSharedPtr req, std_srvs::srv::Empty::Response::SharedPtr res)
 {
   map->clearAll();
-  return true;
 }
 
-bool RollingMapNode::clearBoxCallback(rolling_map::Box::Request &req, rolling_map::Box::Response &res)
+void RollingMapNode::clearBoxCallback(rolling_map::srv::Box::Request::ConstSharedPtr req, rolling_map::srv::Box::Response::SharedPtr res)
 {
-  ROS_INFO_STREAM("RollingMapNode: Executing clearBoxCallback");
+  RCLCPP_INFO_STREAM(get_logger(), "RollingMapNode: Executing clearBoxCallback");
 
-  if(req.p1.header.frame_id.compare(req.p2.header.frame_id) != 0)
+  if(req->p1.header.frame_id != req->p2.header.frame_id)
   {
-    ROS_ERROR("RollingMapNode: Cannot clear box, point frames are different");
-    return false;
+    RCLCPP_ERROR(get_logger(), "RollingMapNode: Cannot clear box, point frames are different");
+    return;
   }
  
   // Add two points to make bounds of a rectangle 
   // (note that we are assuming the z axis it perpendicular to the ground.
   //  this is usually the convention)
-  geometry_msgs::PointStamped p3 = req.p1;
-  p3.point.x = req.p2.point.x;
-  geometry_msgs::PointStamped p4 = req.p1;
-  p4.point.y = req.p2.point.y;
+  geometry_msgs::msg::PointStamped p3 = req->p1;
+  p3.point.x = req->p2.point.x;
+  geometry_msgs::msg::PointStamped p4 = req->p1;
+  p4.point.y = req->p2.point.y;
 
   // Transform points to map frame
-  tf::Stamped<tf::Point> point1, point2, point3, point4;
-  tf::pointStampedMsgToTF(req.p1,point1);
-  tf::pointStampedMsgToTF(req.p2,point2);
-  tf::pointStampedMsgToTF(p3,point3);
-  tf::pointStampedMsgToTF(p4,point4);
-  tf::StampedTransform t;
-  t.frame_id_ = req.p1.header.frame_id;
-  t.child_frame_id_ = param.world_frame;
-  t.stamp_ = ros::Time::now();
-  if(!getTransform(t))
+  if(!tf_buffer_.canTransform(req->p1.header.frame_id, params_.world_frame, req->p1.header.stamp, rclcpp::Duration::from_seconds(0.5)))
   {
-    ROS_ERROR("RollingMapNode: Cannot clear box, failed to get transform from point frame to map frame");
-    return false;
+    RCLCPP_ERROR(get_logger(), "RollingMapNode: Cannot clear box, failed to get transform from point frame to map frame");
+    return;
   }
-  point1.setData(t*point1);
-  point2.setData(t*point2);
-  point3.setData(t*point3);
-  point4.setData(t*point4);
+  geometry_msgs::msg::PointStamped point1 = tf_buffer_.transform(req->p1,point1, params_.world_frame);
+  geometry_msgs::msg::PointStamped point2 = tf_buffer_.transform(req->p2,point2, params_.world_frame);
+  geometry_msgs::msg::PointStamped point3 = tf_buffer_.transform(p3,point3, params_.world_frame);
+  geometry_msgs::msg::PointStamped point4 = tf_buffer_.transform(p4,point4, params_.world_frame);
 
   // Put points in array that is ordered consecutively
-  std::vector<std::vector<float>> polygon;
-  std::vector<float> point;
-  point.resize(2);
-  point[0] = point1.getX();
-  point[1] = point1.getY();
+  std::vector<std::array<float, 2>> polygon;
+  std::array<float, 2> point;
+  point[0] = point1.point.x;
+  point[1] = point1.point.y;
   polygon.push_back(point);
-  point[0] = point3.getX();
-  point[1] = point3.getY();
+  point[0] = point3.point.x;
+  point[1] = point3.point.y;
   polygon.push_back(point);
-  point[0] = point2.getX();
-  point[1] = point2.getY();
+  point[0] = point2.point.x;
+  point[1] = point2.point.y;
   polygon.push_back(point);
-  point[0] = point4.getX();
-  point[1] = point4.getY();
+  point[0] = point4.point.x;
+  point[1] = point4.point.y;
   polygon.push_back(point);
     
   // Clear box bounded by the two points
-  if(!map->clearPositionBox(polygon, req.p1.point.z, req.p2.point.z))
+  if(!map->clearPositionBox(polygon, req->p1.point.z, req->p2.point.z))
   {
-    ROS_ERROR("RollingMapNode: Rolling map failed to clear position box.");
-    return false;
+    RCLCPP_ERROR(get_logger(), "RollingMapNode: Rolling map failed to clear position box.");
+    return;
   }
 
-  ROS_INFO_STREAM("RollingMapNode: Cleared map box from (" << req.p1.point.x << ", " << req.p1.point.y << ", " << req.p1.point.z << ") to (" << req.p2.point.x << ", " << req.p2.point.y << ", " << req.p2.point.z << ") in frame: " << req.p1.header.frame_id);  
-  return true;
+  RCLCPP_INFO_STREAM(get_logger(), "RollingMapNode: Cleared map box from (" << req->p1.point.x << ", " << req->p1.point.y << ", " << req->p1.point.z << ") to (" << req->p2.point.x << ", " << req->p2.point.y << ", " << req->p2.point.z << ") in frame: " << req->p1.header.frame_id);  
 }
 
 void RollingMapNode::checkTranslation()
 {
-  tf::StampedTransform tempTransform;
-  tempTransform.frame_id_ = param.robot_frame;
-  tempTransform.child_frame_id_ = param.world_frame;
+  geometry_msgs::msg::TransformStamped tempTransform;
+  tempTransform.header.frame_id = params_.robot_frame;
+  tempTransform.child_frame_id  = params_.world_frame;
   getTransform(tempTransform);
-  float xDiff = tempTransform.getOrigin().getX() - robotTransform.getOrigin().getX();
-  float yDiff = tempTransform.getOrigin().getY() - robotTransform.getOrigin().getY();
+  float xDiff = tempTransform.transform.translation.x - robotTransform.transform.translation.x;
+  float yDiff = tempTransform.transform.translation.y - robotTransform.transform.translation.y;
   float dist = pow(pow(xDiff,2) + pow(yDiff,2), 0.5);
-  if(dist > param.translate_distance)
+  if(dist > params_.translate_distance)
   {
     robotTransform = tempTransform;
     M_TIC("updatePosition");
-    map->updatePosition(robotTransform.getOrigin().getX(), robotTransform.getOrigin().getY());
+    map->updatePosition(robotTransform.transform.translation.x, robotTransform.transform.translation.y);
     M_TOC("updatePosition");
   }
 }
@@ -401,12 +345,12 @@ void RollingMapNode::publishMessages()
   const float minYP = map->getMinYP();
 
   M_TIC("publishMap");
-  if(mapPub.getNumSubscribers() > 0)
+  if(mapPub->get_subscription_count() > 0)
   {
     // Set up grid info
-    nav_msgs::OccupancyGrid grid;
-    grid.header.stamp = ros::Time::now();
-    grid.header.frame_id = param.world_frame;
+    nav_msgs::msg::OccupancyGrid grid;
+    grid.header.stamp = now();
+    grid.header.frame_id = params_.world_frame;
     grid.info.resolution = map->getResolution();
     grid.info.width = map->getWidth();
     grid.info.height = map->getWidth();
@@ -422,13 +366,13 @@ void RollingMapNode::publishMessages()
     // Sum z columns to build 2d map
     for(const Coord& c : points)
     {
-      if(c.z <= map->getMaxZI() - param.ignore_top_rows)
+      if(c.z <= map->getMaxZI() - params_.ignore_top_rows)
       {
         int index = c.y*grid.info.width + c.x; 
         if(index >= 0 && index <= grid.data.size())
           grid.data[index] = 100;
         else
-          ROS_ERROR_THROTTLE(1.0, "RollingMapNode: Map publish calculated invalid index");
+          RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "RollingMapNode: Map publish calculated invalid index");
       }
     }
 
@@ -444,7 +388,7 @@ void RollingMapNode::publishMessages()
       } 
     }
 
-    mapPub.publish(grid);
+    mapPub->publish(grid);
   }
   M_TOC("publishMap");
 
@@ -465,13 +409,13 @@ void RollingMapNode::publishMessages()
   // if(markerPub.getNumSubscribers() > 0)
   // {
   //   // Add points to marker array
-  //   visualization_msgs::Marker occupied;
-  //   occupied.header.frame_id = param.world_frame;
+  //   visualization_msgs::msg::Marker occupied;
+  //   occupied.header.frame_id = params_.world_frame;
   //   occupied.header.stamp = ros::Time::now();
   //   occupied.ns = "map";
   //   occupied.id = 1;
-  //   occupied.type = visualization_msgs::Marker::CUBE_LIST;
-  //   occupied.action = visualization_msgs::Marker::ADD;
+  //   occupied.type = visualization_msgs::msg::Marker::CUBE_LIST;
+  //   occupied.action = visualization_msgs::msg::Marker::ADD;
   //   occupied.pose.orientation.w = 1.0;
   //   occupied.scale.x = map->getResolution();
   //   occupied.scale.y = map->getResolution();
@@ -480,13 +424,13 @@ void RollingMapNode::publishMessages()
 
   //   for(int i = 0; i < points.size(); i++)
   //   {
-  //     geometry_msgs::Point center;
+  //     geometry_msgs::msg::Point center;
   //     center.x = points[i].x;
   //     center.y = points[i].y;
   //     center.z = points[i].z;
   //     occupied.points.push_back(center);
   //     float heightPercent = points[i].z/map->getHeight()/res;
-  //     std_msgs::ColorRGBA color;
+  //     std_msgs::msg::ColorRGBA color;
   //     color.r = 0;
   //     color.g = heightPercent;
   //     color.b = 1-heightPercent;
@@ -500,24 +444,23 @@ void RollingMapNode::publishMessages()
 
   // Copy the data to the pointcloud message
   M_TIC("publishPointcloud");
-  output_cloud_.header.stamp = ros::Time::now();
-  output_cloud_.header.seq++;
+  output_cloud_.header.stamp = now();
   output_cloud_.width = points.size();
   output_cloud_.data.clear();
   output_cloud_.data.resize(output_cloud_.point_step * output_cloud_.width);
   memcpy(output_cloud_.data.data(), true_points.data(), output_cloud_.data.size());
-  pointcloudPub.publish(output_cloud_);
+  pointcloudPub->publish(output_cloud_);
   M_TOC("publishPointcloud");
   
   // Ready pub
-  std_msgs::Bool msg;
+  std_msgs::msg::Bool msg;
   msg.data = hasData;
-  readyPub.publish(msg);
+  readyPub->publish(msg);
 
   // Outline pub
-  geometry_msgs::PolygonStamped outline;
-  outline.header.stamp = ros::Time::now();
-  outline.header.frame_id = param.world_frame;
+  geometry_msgs::msg::PolygonStamped outline;
+  outline.header.stamp = now();
+  outline.header.frame_id = params_.world_frame;
   outline.polygon.points.reserve(8);
   outline.polygon.points.resize(4);
   outline.polygon.points[0].x = minXP;
@@ -533,12 +476,12 @@ void RollingMapNode::publishMessages()
     outline.polygon.points.push_back(outline.polygon.points[i]);
     outline.polygon.points.back().z += map->getHeight()*map->getResolution();
   }
-  outlinePub.publish(outline);
+  outlinePub->publish(outline);
 
   M_TOC("publishMessages");
 }
 
-bool RollingMapNode::isOccupied(int r, int c, const nav_msgs::OccupancyGrid &g)
+bool RollingMapNode::isOccupied(int r, int c, const nav_msgs::msg::OccupancyGrid &g)
 {
   if(r >= 0 && c >= 0 && r < g.info.height && c < g.info.width)
   {
@@ -554,36 +497,29 @@ bool RollingMapNode::isOccupied(int r, int c, const nav_msgs::OccupancyGrid &g)
 
 void RollingMapNode::run()
 {
-  ros::Rate pubRate(param.run_frequency);
-  while(ros::ok())
-  {
-    publishMessages();
-    checkTranslation();
-    pubRate.sleep();
-  }
+  publishMessages();
+  checkTranslation();
 }
 
 } // namespace rolling_map
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "rolling_map", ros::init_options::NoSigintHandler);
+  rclcpp::InitOptions opts;
+  opts.shutdown_on_signal = false;
+  rclcpp::init(argc, argv, opts);
+  
+  auto node = std::make_shared<rolling_map::RollingMapNode>();
 
-  node = std::make_unique<rolling_map::RollingMapNode>();
-
-  sigintHandler = [](int signal){
+  sigintHandler = [node](int signal){
     #ifdef TIMEIT
     node->main_timer->summary(cpp_timer::Timer::BY_AVERAGE);
     node->callback_timer->summary(cpp_timer::Timer::BY_AVERAGE);
-    node->~RollingMapNode();
     #endif
   };
   std::signal(SIGINT, handle);
 
-  if(node->isInit())
-    node->run();
-  else
-    ROS_ERROR("Rolling map node failed to initialize.");
+  rclcpp::spin(node);
 
   return 0;
 }

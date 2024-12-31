@@ -1,0 +1,89 @@
+rolling_map:    
+  world_frame:
+    type: string
+    description: "The frame in which the map is to be defined"
+    default_value: map
+    validation:
+      not_empty<>: []
+
+  robot_frame:
+    type: string
+    description: "The center frame of the rolling map"
+    default_value: base_footprint
+    validation:
+      not_empty<>: []
+
+  pointcloud_topics:
+    type: string_array
+    description: "All pointcloud topics to use for building the map"
+    validation:
+      not_empty<>: []
+      unique<>: null
+
+  width:
+    type: double
+    description: "The width (y-direction) of the rolling map in meters"
+    default_value: 10.0
+    validation:
+      gt<>: 0.0
+
+  height:
+    type: double
+    description: "The height (x-direction) of the rolling map in meters"
+    default_value: 10.0
+    validation:
+      gt<>: 0.0
+
+  resolution:
+    type: double
+    description: "The side length of a single voxel in meters"
+    default_value: 0.05
+    validation:
+      gt<>: 0.0
+
+  z_minimum:
+    type: double
+    description: "The minimum elevation to represent in the rolling map in meters. Defined in the world frame"
+    default_value: 0.0
+
+  run_frequency:
+    type: double
+    description: "Frequency to update the rolling map in Hertz"
+    default_value: 5.0
+    validation:
+      gt_eq<>: 0.0
+
+  translate_distance:
+    type: double
+    description: "The travel distance of the robot after which the map center is updated"
+    default_value: 0.5
+    validation:
+      gt<>: 0.0
+
+  ignore_top_rows:
+    type: int
+    description: "The depth of voxels off the top of the map to ignore when projecting to a 2D map"
+    default_value: 0
+    validation:
+      gt_eq<>: 0
+
+  occupancy_threshold:
+    type: double
+    description: "The occupancy probability above which a voxel is considered occupied"
+    default_value: 0.5
+    validation:
+      bounds<>: [0.0, 1.0]
+
+  hit_value:
+    type: double
+    description: "The occupancy probability increase applied to a voxel when a ray collides with an object"
+    default_value: 0.1
+    validation:
+      gt<>: 0.0
+
+  miss_value:
+    type: double
+    description: "The occupancy probability decrease applied to a voxel when a ray passes through without collision"
+    default_value: 0.1
+    validation:
+      gt<>: 0.0

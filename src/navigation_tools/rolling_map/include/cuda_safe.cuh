@@ -57,7 +57,7 @@ if (cuda_ok){                                                                   
     cuda_ok = cuda_ok && (err == cudaSuccess);                                                                                             \
     if (not cuda_ok) {                                                                                                                     \
         const char* err_s = cudaGetErrorString(err);                                                                                       \
-        ROS_WARN("Cuda Error [%d]\nFailed Command: \"%s\"\nError: %s\nAt line %d of %s", (int)(err), #command, err_s, __LINE__, __FILE__); \
+        RCLCPP_WARN(logger_, "Cuda Error [%d]\nFailed Command: \"%s\"\nError: %s\nAt line %d of %s", (int)(err), #command, err_s, __LINE__, __FILE__); \
     }                                                                                                                                      \
 }
 

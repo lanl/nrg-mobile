@@ -77,9 +77,9 @@ namespace rolling_map
 {
 
 struct ProbabilityModel{
-  float maximum;
   float threshold;
-  float hit_miss_ratio;
+  float hit_val;
+  float miss_val;
 };
 
 // Forward declaration
@@ -232,7 +232,7 @@ public:
     Clear the area contained within the given x-y polygon and z1-z2 height
     Thread safe
   */
-  bool clearPositionBox(std::vector<std::vector<float>> polygon, float z1, float z2);
+  bool clearPositionBox(std::vector<std::array<float, 2>> polygon, float z1, float z2);
 
   /////////////////////////////
   // Array access functions

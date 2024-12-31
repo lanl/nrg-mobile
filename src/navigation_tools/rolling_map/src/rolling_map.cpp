@@ -358,7 +358,7 @@ void RollingMap::clearAll()
 }
 #endif
 
-bool RollingMap::clearPositionBox(std::vector<std::vector<float>> polygon, float z1, float z2)
+bool RollingMap::clearPositionBox(std::vector<std::array<float, 2>> polygon, float z1, float z2)
 {
   if(polygon.size() <= 2)
   {

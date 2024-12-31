@@ -87,9 +87,9 @@ class cudaVoxelGrid{
 		float min_y;
 		float min_z;
 
-		voxel_block_t probability_threshold = 5;
-		voxel_block_t probability_maximum = 10;
-		voxel_block_t hit_count = 1;
+		voxel_block_t probability_threshold = 0.5;
+		voxel_block_t hit_val = 0.1;
+		voxel_block_t miss_val = 0.1;
 };
 
 } // end namespace rolling_map

@@ -49,10 +49,13 @@
 
 #include "rolling_map.h"
 #include "rolling_map/srv/box.hpp"
+#include "rolling_map_parameters.hpp" // Auto-generated parameter header
 
 #include <rclcpp/rclcpp.hpp>
 #include <pcl/point_cloud.h>
+#include <std_msgs/msg/bool.hpp>
 #include <std_srvs/srv/empty.hpp>
+#include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -64,41 +67,19 @@
 
 namespace rolling_map
 {
-struct MapParams
-{
-  std::vector<std::string> pc_topics;
-  std::string map_topic;
-  std::string marker_topic;
-  std::string reset_topic;
-  std::string world_frame;
-  std::string robot_frame;
-  int width;
-  int height;
-  float resolution;
-  float z_minimum;
-  float run_frequency;
-  float translate_distance;
-  int ignore_top_rows;
-  float sensing_radius;
-  float occupancy_threshold_val = 0.0f;
-  float occupancy_maximum_val = 1.0f;
-  float hit_miss_ratio = 1.0f;
-};
-
 class RollingMapNode : public rclcpp::Node
 {
 private:
-  tf2_ros::TransformListener listener;
+  Params params_;
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
   sensor_msgs::msg::PointCloud2 output_cloud_;
   bool init;
 
-  // Parameters
-  MapParams param;
-
   // Listen for point clouds
   bool hasData;
-  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pcSub;
-  void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg, const std::string& sensor_frame_id);
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pc_subs_;
+  void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg);
 
   // Publish visual data and map
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr markerPub;
@@ -111,28 +92,29 @@ private:
 
   // Reset service
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr resetService;
-  bool resetCallback(std_srvs::srv::Empty::Request::ConstSharedPtr req, std_srvs::srv::Empty::Response::SharedPtr res);
+  void resetCallback(std_srvs::srv::Empty::Request::ConstSharedPtr req, std_srvs::srv::Empty::Response::SharedPtr res);
 
   // Clear Footprint service
   rclcpp::Service<rolling_map::srv::Box>::SharedPtr clearBoxService;
-  bool clearBoxCallback(rolling_map::srv::Box::Request::ConstSharedPtr req, rolling_map::srv::Box::Response::SharedPtr res);
+  void clearBoxCallback(rolling_map::srv::Box::Request::ConstSharedPtr req, rolling_map::srv::Box::Response::SharedPtr res);
 
   // Map construct
-  RollingMap *map;
+  std::shared_ptr<RollingMap> map;
  
   // Get sensor transform
   bool getTransform(geometry_msgs::msg::TransformStamped &transform, bool init = false);
-  void createAdjustmentVector(const geometry_msgs::msg::TransformStamped &sensorTransform, std::vector<pcl::PointXYZ> &points);
 
   // check if map needs to be translated
   geometry_msgs::msg::TransformStamped robotTransform;
   void checkTranslation();
 
+  // Main loop
+  rclcpp::TimerBase::SharedPtr run_timer_;
+  void run();
+
 public:
   RollingMapNode();
-  ~RollingMapNode();
   bool isInit();
-  void run();
 
   #ifdef TIMEIT
   std::unique_ptr<cpp_timer::Timer> main_timer;
