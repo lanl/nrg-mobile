@@ -45,11 +45,11 @@
 * Author: Alex von Sternberg
 *********************************************************************/
 
+#include <omp.h>
+#include <list>
 #include <algorithm>
-#include "omp.h"
-#include "ros/console.h"
-#include "cuda_safe.cuh"
 #include "rolling_map.h"
+#include "cuda_safe.cuh"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
@@ -101,9 +101,9 @@ RollingMap::RollingMap(int w, int h, float res, float x, float y, float zmin, Pr
 
   CUDA_ONLY(
     if(cudaInit(model)) 
-      ROS_INFO("Voxel grid succesfully allocated on the GPU");
+      RCLCPP_INFO(logger_, "Voxel grid succesfully allocated on the GPU");
     else 
-      ROS_ERROR("Voxel grid initialization failed!");
+      RCLCPP_ERROR(logger_, "Voxel grid initialization failed!");
   )
 }
 
@@ -362,21 +362,21 @@ bool RollingMap::clearPositionBox(std::vector<std::vector<float>> polygon, float
 {
   if(polygon.size() <= 2)
   {
-    ROS_ERROR("RollingMap: clearPositionBox polygon size must be at least 2! Cannot clear polygon.");
+    RCLCPP_ERROR(logger_, "RollingMap: clearPositionBox polygon size must be at least 2! Cannot clear polygon.");
     return false;
   }
 
   // Write lock map mutex
   std::lock_guard<std::shared_timed_mutex> write_lock(map_mutex_);
 
-  ROS_INFO_STREAM("RollingMap: Clearing position box. z1" << z1 << " z2: " << z2);
+  RCLCPP_INFO_STREAM(logger_, "RollingMap: Clearing position box. z1" << z1 << " z2: " << z2);
   std::vector<std::vector<int>> ipoly;
   int iz1;
   for(int i = 0; i < polygon.size(); i++)
   {
     if(polygon[i].size() !=2)
     {
-      ROS_ERROR("RollingMap: clearPositionBox polygon should contain vectors of size 2 (x and y). Cannot clear polygon.");
+      RCLCPP_ERROR(logger_, "RollingMap: clearPositionBox polygon should contain vectors of size 2 (x and y). Cannot clear polygon.");
       return false;
     }
     int x,y;
@@ -385,7 +385,7 @@ bool RollingMap::clearPositionBox(std::vector<std::vector<float>> polygon, float
     point.push_back(x);
     point.push_back(y);
     ipoly.push_back(point);
-    ROS_INFO_STREAM("RollingMap: point in poly: (" << x << ", " << y << ")");
+    RCLCPP_INFO_STREAM(logger_, "RollingMap: point in poly: (" << x << ", " << y << ")");
   }
   int ix, iy, iz2;
   index(polygon[0][0],polygon[0][1],z2,ix,iy,iz2);
@@ -397,7 +397,7 @@ bool RollingMap::clearIndexBox(std::vector<std::vector<int>> polygon, int z1, in
 {
   if(polygon.size() <= 2)
   {
-    ROS_ERROR("RollingMap: clearIndexBox polygon size must be at least 2! Cannot clear polygon.");
+    RCLCPP_ERROR(logger_, "RollingMap: clearIndexBox polygon size must be at least 2! Cannot clear polygon.");
     return false;
   }
 
@@ -408,7 +408,7 @@ bool RollingMap::clearIndexBox(std::vector<std::vector<int>> polygon, int z1, in
   if(z1==z2)
     return false;
 
-  ROS_INFO_STREAM("RollingMap: Clearing index box. z1" << z1 << " z2: " << z2);
+  RCLCPP_INFO_STREAM(logger_, "RollingMap: Clearing index box. z1" << z1 << " z2: " << z2);
 
   // Delete elements in box
   for(CellMap::iterator it = map_.begin(); it != map_.end();)
@@ -431,7 +431,7 @@ bool RollingMap::pointInPoly(std::vector<int> point, std::vector<std::vector<int
 {
   if(point.size() != 2)
   {
-    ROS_ERROR("RollingMap: pointInPoly point should be size 2");
+    RCLCPP_ERROR(logger_, "RollingMap: pointInPoly point should be size 2");
     return false;
   }
   int pos = 0;
@@ -440,7 +440,7 @@ bool RollingMap::pointInPoly(std::vector<int> point, std::vector<std::vector<int
   {
     if(poly[i].size() != 2)
     {
-      ROS_ERROR("RollingMap: pointInPoly polygon should contain vectors of size 2 (x and y). Cannot check point.");
+      RCLCPP_ERROR(logger_, "RollingMap: pointInPoly polygon should contain vectors of size 2 (x and y). Cannot check point.");
       return false;
     }
 

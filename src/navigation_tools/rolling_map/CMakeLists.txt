@@ -1,13 +1,11 @@
 ## CREATE PACKAGE ===============================
 
-cmake_minimum_required(VERSION 3.8.0)
-project(rolling_map LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.18)
+project(rolling_map LANGUAGES C CXX)
 enable_language(CUDA OPTIONAL)
 
-# Compile as C++ 17
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -w")
-# set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --diag_suppress=20012 -Xcudafe --diag_suppress=20013 -Xcudafe --diag_suppress=20014 -Xcudafe --diag_suppress=20015 Xcudafe --diag_suppress=Wcpp")
+# Compile as C++ 20, available in ROS2 Humble and newer
+set(CMAKE_CXX_STANDARD 20)
 
 # Determine if CUDA is available
 include(CheckLanguage)
@@ -15,6 +13,7 @@ check_language(CUDA)
 get_property(languages GLOBAL PROPERTY ENABLED_LANGUAGES)
 if(CMAKE_CUDA_COMPILER AND ("CUDA" IN_LIST languages))
   set(CUDA_ENABLE true)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
   add_definitions(-DUSE_CUDA)
   message("compiling rolling map with Cuda")
 else()
@@ -24,22 +23,11 @@ endif()
 
 # -------------------------------------
 
-
-
 ## REQUIRED PACKAGES ============================
 
 # Find catkin macros and libraries
-find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  tf
-  pcl_ros
-  pcl_conversions
-  std_msgs
-  geometry_msgs
-)
-
-# Use boost for shared_mutex
-find_package(Boost REQUIRED COMPONENTS thread)
+find_package(ament_cmake_auto)
+ament_auto_find_build_dependencies()
 
 # Used in std::for_each
 find_package(TBB REQUIRED)
@@ -57,44 +45,17 @@ endif()
 
 # -------------------------------------
 
-
-
-## GENERATE SERVICE FILES =======================
-
-# Generate services in the 'srv' folder
-add_service_files(
-  FILES
-  Box.srv
-)
-
-## Generate added messages and services with any dependencies listed here
-generate_messages(
+# Message generation
+rosidl_generate_interfaces(
+  ${PROJECT_NAME}
+    "srv/Box.srv"
   DEPENDENCIES
-  std_msgs  # Or other packages containing msgs
-  geometry_msgs
+    geometry_msgs
 )
+ament_export_dependencies(rosidl_default_runtime)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
 
 # -------------------------------------
-
-
-## CATKIN PACKAGE ===============================
-
-catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES rolling_map
-  CATKIN_DEPENDS roscpp tf
-  DEPENDS Boost
-)
-
-include_directories(
-  include
-  ${Boost_INCLUDE_DIRS}
-  ${catkin_INCLUDE_DIRS}
-)
-
-# -------------------------------------
-
-
 
 ## LIBRARIES AND EXECUTABLES ===================
 
@@ -109,13 +70,12 @@ if(CUDA_ENABLE)
   list(APPEND LIB_SOURCES src/cast_rays.cu src/cuda_voxel_grid.cu src/update_position.cu src/rolling_map.cu)
 endif()
 
-add_library(${PROJECT_NAME} ${LIB_SOURCES})
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} tbb)
+ament_auto_add_library(${PROJECT_NAME}_lib ${LIB_SOURCES})
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 
 ## Create an executable node for creating a rolling map in ROS
-add_executable(${PROJECT_NAME}_node src/rolling_map_node.cpp)
-target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME} ${catkin_LIBRARIES})
+ament_auto_add_executable(${PROJECT_NAME}_node src/rolling_map_node.cpp)
+target_link_libraries(${PROJECT_NAME}_node ${cpp_typesupport_target})
 
 if (cpp_timer_FOUND)
   add_definitions(-DTIMEIT)
@@ -123,3 +83,5 @@ if (cpp_timer_FOUND)
 endif()
 
 # -------------------------------------
+
+ament_auto_package()

@@ -1,31 +1,42 @@
 <?xml version="1.0"?>
-<package format="2">
+<package format="3">
   <name>rolling_map</name>
-  <version>2.0.0</version>
+  <version>3.0.0</version>
   <description>The rolling_map package</description>
 
   <author email="avonsternberg@lanl.gov">Alex Von Sternberg</author>
   <maintainer email="alexnavtt@lanl.gov">Alex Navarro</maintainer>
   <license>BSD</license>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <build_depend>tf</build_depend>
   <build_depend>tbb</build_depend>
-  <build_depend>roscpp</build_depend>
+  <build_depend>rclcpp</build_depend>
+  <build_depend>tf2_ros</build_depend>
   <build_depend>pcl_ros</build_depend>
   <build_depend>libomp-dev</build_depend>
   <build_depend>pcl_conversions</build_depend>
 
-  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
 
-  <build_export_depend>tf</build_export_depend>
-  <build_export_depend>roscpp</build_export_depend>
-  <build_depend>message_generation</build_depend>
+  <build_export_depend>rclcpp</build_export_depend>
+  <build_export_depend>tf2_ros</build_export_depend>
 
-  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>velodyne</exec_depend>
+
+  <!-- Message Generation Depends -->
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <build_depend>rosidl_typesupport_cpp</build_depend>
+  <build_depend>rosidl_default_generators</build_depend>
 
   <export>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

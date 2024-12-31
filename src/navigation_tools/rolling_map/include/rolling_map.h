@@ -48,16 +48,17 @@
 #ifndef _ROLLING_MAP_H_
 #define _ROLLING_MAP_H_
 
-#include <ros/ros.h>
-#include <unordered_set>
+#include "coord.h"
+#include <atomic>
 #include <string>
 #include <vector>
-#include <atomic>
-#include <mutex>
 #include <shared_mutex>
-#include "boost/thread/shared_mutex.hpp"
-#include "pcl/point_types.h"
-#include "coord.h"
+#include <unordered_set>
+#include <pcl/point_types.h>
+
+// For logging
+#include <rclcpp/clock.hpp>
+#include <rclcpp/logging.hpp>
 
 #ifdef TIMEIT
 #include "cpp_timer/Timer.h"
@@ -102,6 +103,9 @@ private:
   float x0_;                      // x position of lower left hand corner of grid
   float y0_;                      // y position of lower left hand corner of grid
   float z0_;                      // Height of z[0] cells in array (m)
+
+  rclcpp::Clock clock_{RCL_ROS_TIME};
+  rclcpp::Logger logger_ = rclcpp::get_logger("RollingMap");
 
   std::shared_timed_mutex map_mutex_;        // Mutex for thread safety when we translate the map
 

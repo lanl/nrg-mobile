@@ -47,15 +47,16 @@
 #ifndef _ROLLING_MAP_NODE_H_
 #define _ROLLING_MAP_NODE_H_
 
-#include "ros/ros.h"
 #include "rolling_map.h"
-#include "tf/transform_listener.h"
-#include "pcl_ros/point_cloud.h"
-#include "std_srvs/Empty.h"
-#include "nav_msgs/OccupancyGrid.h"
-#include "rolling_map/Box.h"
-#include "sensor_msgs/PointCloud2.h"
-#include "xmlrpcpp/XmlRpc.h"
+#include "rolling_map/srv/box.hpp"
+
+#include <rclcpp/rclcpp.hpp>
+#include <pcl/point_cloud.h>
+#include <std_srvs/srv/empty.hpp>
+#include <tf2_ros/transform_listener.h>
+#include <nav_msgs/msg/occupancy_grid.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
 #ifdef TIMEIT
 #include "cpp_timer/Timer.h"
@@ -65,7 +66,7 @@ namespace rolling_map
 {
 struct MapParams
 {
-  XmlRpc::XmlRpcValue pc_topics;
+  std::vector<std::string> pc_topics;
   std::string map_topic;
   std::string marker_topic;
   std::string reset_topic;
@@ -84,13 +85,11 @@ struct MapParams
   float hit_miss_ratio = 1.0f;
 };
 
-class RollingMapNode 
+class RollingMapNode : public rclcpp::Node
 {
 private:
-  ros::NodeHandle n;
-  ros::AsyncSpinner spinner;
-  tf::TransformListener listener;
-  sensor_msgs::PointCloud2 output_cloud_;
+  tf2_ros::TransformListener listener;
+  sensor_msgs::msg::PointCloud2 output_cloud_;
   bool init;
 
   // Parameters
@@ -98,35 +97,35 @@ private:
 
   // Listen for point clouds
   bool hasData;
-  std::vector<ros::Subscriber> pc_subs_;
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr> pcSub;
   void pcCallback(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& msg, const std::string& sensor_frame_id);
 
   // Publish visual data and map
-  ros::Publisher markerPub;
-  ros::Publisher mapPub;
-  ros::Publisher readyPub;
-  ros::Publisher pointcloudPub;
-  ros::Publisher outlinePub;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr markerPub;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr mapPub;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr readyPub;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloudPub;
+  rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outlinePub;
   void publishMessages();
-  bool isOccupied(int r, int c, const nav_msgs::OccupancyGrid &g);
+  bool isOccupied(int r, int c, const nav_msgs::msg::OccupancyGrid &g);
 
   // Reset service
-  ros::ServiceServer resetService;
-  bool resetCallback(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr resetService;
+  bool resetCallback(std_srvs::srv::Empty::Request::ConstSharedPtr req, std_srvs::srv::Empty::Response::SharedPtr res);
 
   // Clear Footprint service
-  ros::ServiceServer clearBoxService;
-  bool clearBoxCallback(rolling_map::Box::Request &req, rolling_map::Box::Response &res);
+  rclcpp::Service<rolling_map::srv::Box>::SharedPtr clearBoxService;
+  bool clearBoxCallback(rolling_map::srv::Box::Request::ConstSharedPtr req, rolling_map::srv::Box::Response::SharedPtr res);
 
   // Map construct
   RollingMap *map;
  
   // Get sensor transform
-  bool getTransform(tf::StampedTransform &transform, bool init = false);
-  void createAdjustmentVector(const tf::StampedTransform &sensorTransform, std::vector<pcl::PointXYZ> &points);
+  bool getTransform(geometry_msgs::msg::TransformStamped &transform, bool init = false);
+  void createAdjustmentVector(const geometry_msgs::msg::TransformStamped &sensorTransform, std::vector<pcl::PointXYZ> &points);
 
   // check if map needs to be translated
-  tf::StampedTransform robotTransform;
+  geometry_msgs::msg::TransformStamped robotTransform;
   void checkTranslation();
 
 public:

@@ -46,13 +46,12 @@
 *********************************************************************/
 
 #include "rolling_map_node.h"
-#include "visualization_msgs/Marker.h"
-#include "pcl_ros/transforms.h"
+#include "visualization_msgs/msg/marker.hpp"
+#include "pcl/common/transforms.h"
 #include "pcl_conversions/pcl_conversions.h"
 #include "pcl/filters/filter.h"
-#include "std_msgs/Bool.h"
-#include "tf/transform_datatypes.h"
-#include "geometry_msgs/PolygonStamped.h"
+#include "std_msgs/msg/bool.hpp"
+#include "geometry_msgs/msg/polygon_stamped.hpp"
 #include <csignal>
 #include <functional>
 #include <execution>
@@ -74,15 +73,14 @@ static std::unique_ptr<rolling_map::RollingMapNode> node;
 std::function<void(int)> sigintHandler;
 void handle(int signal){
   if(sigintHandler) sigintHandler(signal);
-  ros::shutdown();
+  rclcpp::shutdown();
 }
 
 namespace rolling_map
 {
 
 RollingMapNode::RollingMapNode() :
-  n("~"),
-  spinner(1),
+  Node("rolling_map_node"),
   init(false),
   hasData(false)
 {
